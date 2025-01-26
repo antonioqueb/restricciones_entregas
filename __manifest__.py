@@ -9,7 +9,7 @@
     """,
     'author': 'Alphaqueb Consulting SAS',
     'website': 'http://www.alphaqueb.com',
-    'depends': ['sale_management'],
+    'depends': ['sale_management', 'sale'],
     'data': [
         'security/security.xml',
         'views/sale_order_views.xml',

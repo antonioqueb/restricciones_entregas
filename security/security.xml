@@ -3,7 +3,7 @@
     <data>
         <record id="group_edit_commitment_date" model="res.groups">
             <field name="name">Editar Fechas de Entrega</field>
-            <field name="category_id" ref="base.module_category_sales_management"/>
+            <field name="category_id" ref="base.module_category_sales"/> <!-- Corrección aquí -->
             <field name="users" eval="[(4, ref('base.user_admin'))]"/>
         </record>
     </data>

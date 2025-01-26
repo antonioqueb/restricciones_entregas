@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="group_edit_commitment_date" model="res.groups">
+            <field name="name">Editar Fechas de Entrega</field>
+            <field name="category_id" ref="base.module_category_sales_management"/>
+            <field name="users" eval="[(4, ref('base.user_admin'))]"/>
+        </record>
+    </data>
+</odoo>

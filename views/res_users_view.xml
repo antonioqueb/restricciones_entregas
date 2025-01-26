@@ -1,20 +1,18 @@
 <odoo>
     <record id="view_users_form_inherit_commitment_date" model="ir.ui.view">
-        <field name="name">res.users.form.inherit.commitment.date</field>
+        <field name="name">res.users.form.inherit.commitment_date</field>
         <field name="model">res.users</field>
         <field name="inherit_id" ref="base.view_users_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='groups_id']" position="inside">
-                <group expand="0" string="Restrictions">
-                    <field name="groups_id" widget="many2many_tags">
-                        <tree string="Groups">
-                            <field name="name"/>
-                        </tree>
-                        <form string="Group">
-                            <field name="name"/>
-                        </form>
-                    </field>
-                </group>
+            <xpath expr="//sheet/group/field[@name='groups_id']" position="after">
+                <field name="groups_id" widget="many2many_tags" options="{'no_create': True}">
+                    <tree string="Groups">
+                        <field name="name"/>
+                    </tree>
+                    <form string="Group">
+                        <field name="name"/>
+                    </form>
+                </field>
             </xpath>
         </field>
     </record>

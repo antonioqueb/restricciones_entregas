@@ -6,6 +6,12 @@
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_order_form"/>
             <field name="arch" type="xml">
+                <!-- Agrega el campo can_edit_commitment_date (invisible) -->
+                <xpath expr="//header" position="inside">
+                    <field name="can_edit_commitment_date" invisible="1"/>
+                </xpath>
+
+                <!-- Modifica el atributo readonly -->
                 <xpath expr="//field[@name='commitment_date']" position="attributes">
                     <attribute name="readonly">not can_edit_commitment_date</attribute>
                 </xpath>

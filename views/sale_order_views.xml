@@ -7,7 +7,7 @@
             <field name="inherit_id" ref="sale.view_order_form"/>
             <field name="arch" type="xml">
                 <xpath expr="//field[@name='commitment_date']" position="attributes">
-                    <attribute name="attrs">{'readonly': [('can_edit_commitment_date', '=', False)]}</attribute>
+                    <attribute name="readonly">not can_edit_commitment_date</attribute>
                 </xpath>
             </field>
         </record>

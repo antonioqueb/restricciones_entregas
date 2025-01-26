@@ -28,14 +28,18 @@ class SaleOrder(models.Model):
         return super(SaleOrder, self).create(vals)
 
     def write(self, vals):
-        if 'commitment_date' in vals and not self.env.user.has_group('base.group_system'):
-            raise UserError("Solo los administradores pueden modificar la fecha de entrega prometida.")
-        
         if 'commitment_date' in vals:
+            allowed_groups = [
+                'base.group_system',  # Administradores del sistema
+                'restricciones_entregas.group_edit_commitment_date',  # Nuevo grupo
+            ]
+            if not any(self.env.user.has_group(group) for group in allowed_groups):
+                raise UserError("No tienes permisos para modificar la fecha de entrega prometida.")
+
             for order in self:
                 date_order = order.date_order
                 commitment_date = fields.Datetime.from_string(vals['commitment_date'])
                 if commitment_date < date_order:
                     raise UserError(f"La fecha de entrega prometida para el pedido {order.name} no puede ser anterior a la fecha del pedido.")
-        
+
         return super(SaleOrder, self).write(vals)

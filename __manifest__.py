@@ -10,7 +10,12 @@
     'author': 'Alphaqueb Consulting SAS',
     'website': 'http://www.alphaqueb.com',
     'depends': ['sale_management'],
-    'data': [],
+    'data': [
+                'security/sale_order_restriction.xml',
+                'security/ir.model.access.csv',
+                'views/res_users_view.xml',
+            ],
+
     'installable': True,
     'application': False,
 }

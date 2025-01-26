@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_edit_commitment_date,sale_order_commitment_date,model_sale_order,group_edit_commitment_date,1,1,1,0

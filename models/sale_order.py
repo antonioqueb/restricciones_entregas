@@ -23,9 +23,15 @@ class SaleOrder(models.Model):
         return fields.Datetime.to_string(fields.Datetime.from_string(date_order) + timedelta(days=15))
 
     def _compute_can_edit_commitment_date(self):
-        """Calcula si el usuario actual tiene permisos para editar la fecha de entrega."""
+        """Determina si el usuario puede editar la fecha de entrega."""
         for order in self:
-            order.can_edit_commitment_date = self.env.user.has_group('restricciones_entregas.group_edit_commitment_date') or self.env.user.has_group('base.group_system')
+            if order.state in ['draft', 'sent']:  # Cotización
+                order.can_edit_commitment_date = True
+            else:  # Orden confirmada
+                order.can_edit_commitment_date = self.env.user.has_group(
+                    'restricciones_entregas.group_edit_commitment_date_confirmed'
+                ) or self.env.user.has_group('base.group_system')
+
 
     @api.model
     def create(self, vals):
@@ -38,19 +44,17 @@ class SaleOrder(models.Model):
         return super(SaleOrder, self).create(vals)
 
     def write(self, vals):
-        """Valida permisos y la fecha de entrega al modificar un pedido."""
+        """Valida permisos para modificar la fecha de entrega."""
         if 'commitment_date' in vals:
-            allowed_groups = [
-                'base.group_system',  # Administradores del sistema
-                'restricciones_entregas.group_edit_commitment_date',  # Nuevo grupo
-            ]
-            if not any(self.env.user.has_group(group) for group in allowed_groups):
-                raise UserError("No tienes permisos para modificar la fecha de entrega prometida.")
-
             for order in self:
+                if order.state not in ['draft', 'sent']:  # Orden confirmada
+                    if not self.env.user.has_group('restricciones_entregas.group_edit_commitment_date_confirmed'):
+                        raise UserError("No tienes permisos para modificar la fecha de entrega en órdenes confirmadas.")
+
+                # Validar que la fecha de entrega no sea anterior a la fecha de pedido
                 date_order = order.date_order
                 commitment_date = fields.Datetime.from_string(vals['commitment_date'])
                 if commitment_date < date_order:
-                    raise UserError(f"La fecha de entrega prometida para el pedido {order.name} no puede ser anterior a la fecha del pedido.")
+                    raise UserError(f"La fecha de entrega para el pedido {order.name} no puede ser anterior a la fecha del pedido.")
 
         return super(SaleOrder, self).write(vals)

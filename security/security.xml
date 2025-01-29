@@ -6,5 +6,12 @@
             <field name="category_id" ref="base.module_category_sales"/> <!-- Corrección aquí -->
             <field name="users" eval="[(4, ref('base.user_admin'))]"/>
         </record>
+        
+        <record id="group_edit_commitment_date_confirmed" model="res.groups">
+            <field name="name">Editar Fechas de Entrega en Órdenes Confirmadas</field>
+            <field name="category_id" ref="base.module_category_sales"/>
+        </record>
+
+
     </data>
 </odoo>

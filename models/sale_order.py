@@ -96,7 +96,7 @@ class SaleOrder(models.Model):
                 for field_name in track_line_fields:
                     old_value = line._origin and line._origin[field_name] or 'N/A'
                     new_value = getattr(line, field_name)
-                    if old_value != new_value or order.state in ['draft', 'sent']:
+                    if old_value != new_value:
                         old_str = old_value and str(old_value) or 'N/A'
                         new_str = new_value and str(new_value) or 'N/A'
                         message = (

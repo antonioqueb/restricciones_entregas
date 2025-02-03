@@ -53,7 +53,14 @@ class SaleOrder(models.Model):
         return super(SaleOrder, self).create(vals)
 
     def write(self, vals):
-        """Valida permisos para modificar la fecha de entrega y evita editarla sin el grupo adecuado."""
+        """Valida permisos para modificar la fecha de entrega y registra cambios en el chatter."""
+        # 1) Guardar la fecha de entrega antes de modificarla
+        old_dates = {}
+        if 'commitment_date' in vals:
+            for order in self:
+                old_dates[order.id] = order.commitment_date
+
+        # 2) Validar permisos y restricciones, tal cual tu lógica original.
         if 'commitment_date' in vals:
             for order in self:
                 if order.state in ['draft', 'sent']:
@@ -73,11 +80,34 @@ class SaleOrder(models.Model):
 
                 # Validar que la fecha de entrega no sea anterior a la fecha del pedido
                 date_order = order.date_order
-                commitment_date = fields.Datetime.from_string(vals['commitment_date'])
-                if commitment_date < date_order:
+                new_commitment_date = fields.Datetime.from_string(vals['commitment_date'])
+                if new_commitment_date < date_order:
                     raise UserError(
                         f"La fecha de entrega para el pedido {order.name} no puede "
                         "ser anterior a la fecha del pedido."
                     )
 
-        return super(SaleOrder, self).write(vals)
+        # 3) Llamamos al super para que se apliquen los cambios
+        res = super(SaleOrder, self).write(vals)
+
+        # 4) Registrar el cambio en el chatter si la fecha se modificó realmente
+        if 'commitment_date' in vals:
+            for order in self:
+                old_date = old_dates.get(order.id)
+                new_date = order.commitment_date
+                if old_date != new_date:
+                    # Pon el formato que gustes para el mensaje
+                    old_str = old_date and old_date.strftime('%d/%m/%Y %H:%M:%S') or 'N/A'
+                    new_str = new_date and new_date.strftime('%d/%m/%Y %H:%M:%S') or 'N/A'
+                    user_name = self.env.user.display_name
+                    
+                    message = (
+                        "<b>Cambio en la Fecha de Entrega</b><br/>"
+                        f"<b>Pedido:</b> {order.name}<br/>"
+                        f"<b>Usuario:</b> {user_name}<br/>"
+                        f"<b>Antes:</b> {old_str}<br/>"
+                        f"<b>Ahora:</b> {new_str}"
+                    )
+                    order.message_post(body=message)
+
+        return res

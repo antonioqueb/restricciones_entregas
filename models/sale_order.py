@@ -52,6 +52,7 @@ class SaleOrder(models.Model):
         """Valida permisos para modificar la fecha de entrega y registra cambios en el chatter."""
         old_values = {}
         track_fields = ['commitment_date', 'client_order_ref', 'warehouse_id', 'pricelist_id']
+        track_line_fields = ['product_id', 'name', 'product_uom', 'product_uom_qty', 'price_unit']
 
         for field_name in track_fields:
             if field_name in vals:
@@ -87,6 +88,19 @@ class SaleOrder(models.Model):
                         new_str = new_value and str(new_value) or 'N/A'
                         message = (
                             f"Cambio en {field_name.replace('_', ' ').capitalize()} - Pedido: {order.name} - Usuario: {user_name} "
+                            f"- Antes: {old_str} - Ahora: {new_str}"
+                        )
+                        order.message_post(body=message, message_type='comment', subtype_xmlid='mail.mt_note')
+            
+            for line in order.order_line:
+                for field_name in track_line_fields:
+                    old_value = line._origin and line._origin[field_name] or 'N/A'
+                    new_value = getattr(line, field_name)
+                    if old_value != new_value:
+                        old_str = old_value and str(old_value) or 'N/A'
+                        new_str = new_value and str(new_value) or 'N/A'
+                        message = (
+                            f"Cambio en {field_name.replace('_', ' ').capitalize()} en línea de pedido ({line.product_id.display_name}) - Pedido: {order.name} - Usuario: {user_name} "
                             f"- Antes: {old_str} - Ahora: {new_str}"
                         )
                         order.message_post(body=message, message_type='comment', subtype_xmlid='mail.mt_note')

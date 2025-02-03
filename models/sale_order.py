@@ -50,10 +50,13 @@ class SaleOrder(models.Model):
 
     def write(self, vals):
         """Valida permisos para modificar la fecha de entrega y registra cambios en el chatter."""
-        old_dates = {}
-        if 'commitment_date' in vals:
-            for order in self:
-                old_dates[order.id] = order.commitment_date
+        old_values = {}
+        track_fields = ['commitment_date', 'client_order_ref', 'warehouse_id', 'pricelist_id']
+
+        for field_name in track_fields:
+            if field_name in vals:
+                for order in self:
+                    old_values.setdefault(order.id, {})[field_name] = getattr(order, field_name)
 
         if 'commitment_date' in vals:
             for order in self:
@@ -65,27 +68,27 @@ class SaleOrder(models.Model):
                     if not (self.env.user.has_group('restricciones_entregas.group_edit_commitment_date_confirmed')
                             or self.env.user.has_group('base.group_system')):
                         raise UserError("No tienes permisos para modificar la fecha de entrega en órdenes confirmadas.")
-
+                
                 date_order = order.date_order
                 new_commitment_date = fields.Datetime.from_string(vals['commitment_date'])
                 if new_commitment_date < date_order:
                     raise UserError(f"La fecha de entrega para el pedido {order.name} no puede ser anterior a la fecha del pedido.")
-
+        
         res = super(SaleOrder, self).write(vals)
-
-        if 'commitment_date' in vals:
-            for order in self:
-                old_date = old_dates.get(order.id)
-                new_date = order.commitment_date
-                if old_date != new_date:
-                    old_str = old_date and old_date.strftime('%d/%m/%Y %H:%M:%S') or 'N/A'
-                    new_str = new_date and new_date.strftime('%d/%m/%Y %H:%M:%S') or 'N/A'
-                    user_name = self.env.user.display_name
-
-                    message = (
-                        f"Cambio en la Fecha de Entrega - Pedido: {order.name} - Usuario: {user_name} "
-                        f"- Antes: {old_str} - Ahora: {new_str}"
-                    )
-                    order.message_post(body=message, message_type='comment', subtype_xmlid='mail.mt_note')
-
+        
+        user_name = self.env.user.display_name
+        for order in self:
+            for field_name in track_fields:
+                if field_name in vals:
+                    old_value = old_values[order.id].get(field_name)
+                    new_value = getattr(order, field_name)
+                    if old_value != new_value:
+                        old_str = old_value and str(old_value) or 'N/A'
+                        new_str = new_value and str(new_value) or 'N/A'
+                        message = (
+                            f"Cambio en {field_name.replace('_', ' ').capitalize()} - Pedido: {order.name} - Usuario: {user_name} "
+                            f"- Antes: {old_str} - Ahora: {new_str}"
+                        )
+                        order.message_post(body=message, message_type='comment', subtype_xmlid='mail.mt_note')
+        
         return res

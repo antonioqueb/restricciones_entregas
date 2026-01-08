@@ -1,6 +1,6 @@
 {
     'name': 'Restricciones Entregas - Fecha Entrega Hexagonos',
-    'version': '1.0',
+    'version': '18.0.1.0',
     'category': 'Sales',
     'summary': 'Configurar fecha de entrega por defecto a 15 días',
     'description': """
@@ -9,12 +9,12 @@
     """,
     'author': 'Alphaqueb Consulting SAS',
     'website': 'http://www.alphaqueb.com',
-    'depends': ['sale_management', 'sale'],
+    'depends': ['sale_management'],
     'data': [
         'security/security.xml',
         'views/sale_order_views.xml',
     ],
-
     'installable': True,
     'application': False,
+    'license': 'LGPL-3',
 }

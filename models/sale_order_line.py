@@ -1,5 +1,5 @@
 from odoo import models, fields, api
-from datetime import timedelta
+from datetime import timedelta, date
 from odoo.exceptions import UserError
 
 
@@ -10,6 +10,40 @@ class SaleOrderLine(models.Model):
         string='Fecha Entrega Línea',
         default=lambda self: self._default_line_commitment_date(),
         help="Fecha comprometida para esta línea específica."
+    )
+
+    client_order_ref = fields.Char(
+        string='OC Cliente',
+        related='order_id.client_order_ref',
+        store=True,
+        readonly=True,
+    )
+
+    qty_to_deliver_report = fields.Float(
+        string='Pendiente',
+        compute='_compute_delivery_report_fields',
+        store=True,
+        readonly=True,
+    )
+
+    delivery_days_remaining = fields.Integer(
+        string='Entrega en',
+        compute='_compute_delivery_report_fields',
+        store=True,
+        readonly=True,
+    )
+
+    delivery_line_status = fields.Selection(
+        [
+            ('Vencida', 'Vencida'),
+            ('Próxima', 'Próxima'),
+            ('Pendiente', 'Pendiente'),
+            ('Entregada', 'Entregada'),
+        ],
+        string='Estatus Entrega',
+        compute='_compute_delivery_report_fields',
+        store=True,
+        readonly=True,
     )
 
     @api.model
@@ -24,6 +58,28 @@ class SaleOrderLine(models.Model):
         return fields.Datetime.to_string(
             fields.Datetime.from_string(date_order) + timedelta(days=15)
         )
+
+    @api.depends('product_uom_qty', 'qty_delivered', 'line_commitment_date')
+    def _compute_delivery_report_fields(self):
+        today = date.today()
+        for line in self:
+            pending = max((line.product_uom_qty or 0.0) - (line.qty_delivered or 0.0), 0.0)
+            line.qty_to_deliver_report = pending
+
+            if line.line_commitment_date:
+                days_remaining = (line.line_commitment_date.date() - today).days
+                line.delivery_days_remaining = max(days_remaining, 0)
+            else:
+                line.delivery_days_remaining = 0
+
+            if pending <= 0:
+                line.delivery_line_status = 'Entregada'
+            elif line.line_commitment_date and line.line_commitment_date.date() < today:
+                line.delivery_line_status = 'Vencida'
+            elif line.line_commitment_date and 0 <= (line.line_commitment_date.date() - today).days <= 2:
+                line.delivery_line_status = 'Próxima'
+            else:
+                line.delivery_line_status = 'Pendiente'
 
     @api.constrains('line_commitment_date', 'order_id')
     def _check_line_commitment_date(self):

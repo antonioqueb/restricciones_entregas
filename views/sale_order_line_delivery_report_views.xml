@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- SEARCH -->
+        <record id="view_sale_order_line_delivery_report_search" model="ir.ui.view">
+            <field name="name">sale.order.line.delivery.report.search</field>
+            <field name="model">sale.order.line</field>
+            <field name="arch" type="xml">
+                <search string="Reporte de Entregas">
+                    <field name="order_id"/>
+                    <field name="order_partner_id"/>
+                    <field name="product_id"/>
+                    <field name="line_commitment_date"/>
+                    <field name="state"/>
+
+                    <filter string="Pendientes"
+                            name="pending_lines"
+                            domain="[('display_type', '=', False), ('product_uom_qty', '>', 0), ('product_uom_qty', '>', qty_delivered)]"/>
+
+                    <filter string="Entregadas"
+                            name="delivered_lines"
+                            domain="[('display_type', '=', False), ('product_uom_qty', '>', 0), ('qty_delivered', '>=', product_uom_qty)]"/>
+
+                    <filter string="Vencidas"
+                            name="overdue_lines"
+                            domain="[('display_type', '=', False), ('line_commitment_date', '&lt;', context_today()), ('product_uom_qty', '&gt;', qty_delivered)]"/>
+
+                    <filter string="Hoy"
+                            name="today_lines"
+                            domain="[('display_type', '=', False), ('line_commitment_date', '&gt;=', context_today()), ('line_commitment_date', '&lt;', (context_today() + relativedelta(days=1)))]"/>
+
+                    <filter string="Próximas 7 días"
+                            name="next_7_days"
+                            domain="[('display_type', '=', False), ('line_commitment_date', '&gt;=', context_today()), ('line_commitment_date', '&lt;', (context_today() + relativedelta(days=7)))]"/>
+
+                    <separator/>
+
+                    <filter string="Cotizaciones"
+                            name="draft_sent"
+                            domain="[('order_id.state', 'in', ['draft', 'sent'])]"/>
+
+                    <filter string="Órdenes de Venta"
+                            name="sale_orders"
+                            domain="[('order_id.state', 'in', ['sale', 'done'])]"/>
+
+                    <separator/>
+
+                    <group expand="0" string="Agrupar por">
+                        <filter string="Cliente" name="group_partner" context="{'group_by': 'order_partner_id'}"/>
+                        <filter string="Producto" name="group_product" context="{'group_by': 'product_id'}"/>
+                        <filter string="Fecha Entrega" name="group_date" context="{'group_by': 'line_commitment_date:day'}"/>
+                        <filter string="Pedido" name="group_order" context="{'group_by': 'order_id'}"/>
+                        <filter string="Estado Pedido" name="group_state" context="{'group_by': 'state'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- TREE -->
+        <record id="view_sale_order_line_delivery_report_tree" model="ir.ui.view">
+            <field name="name">sale.order.line.delivery.report.tree</field>
+            <field name="model">sale.order.line</field>
+            <field name="arch" type="xml">
+                <tree string="Reporte de Entregas" create="false" delete="false" default_order="line_commitment_date asc, order_id asc, id asc">
+                    <field name="line_commitment_date" string="Fecha Entrega"/>
+                    <field name="order_id" string="OV"/>
+                    <field name="order_partner_id" string="Cliente"/>
+                    <field name="client_order_ref" string="OC Cliente"/>
+                    <field name="product_id" string="Producto"/>
+                    <field name="name" string="Descripción"/>
+                    <field name="product_uom_qty" string="Cantidad Programada"/>
+                    <field name="qty_delivered" string="Cantidad Entregada"/>
+                    <field name="qty_to_deliver_report" string="Pendiente"/>
+                    <field name="delivery_line_status" widget="badge"
+                           decoration-danger="delivery_line_status == 'Vencida'"
+                           decoration-warning="delivery_line_status == 'Próxima'"
+                           decoration-success="delivery_line_status == 'Entregada'"
+                           decoration-primary="delivery_line_status == 'Pendiente'"/>
+                    <field name="delivery_days_remaining" string="Entrega en"/>
+                    <field name="state" string="Estado Línea"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- FORM -->
+        <record id="view_sale_order_line_delivery_report_form" model="ir.ui.view">
+            <field name="name">sale.order.line.delivery.report.form</field>
+            <field name="model">sale.order.line</field>
+            <field name="arch" type="xml">
+                <form string="Detalle de Entrega Programada" create="false" delete="false">
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="order_id" readonly="1"/>
+                                <field name="order_partner_id" readonly="1"/>
+                                <field name="client_order_ref" readonly="1"/>
+                                <field name="product_id" readonly="1"/>
+                                <field name="name" readonly="1"/>
+                            </group>
+                            <group>
+                                <field name="line_commitment_date"/>
+                                <field name="product_uom_qty" readonly="1"/>
+                                <field name="qty_delivered" readonly="1"/>
+                                <field name="qty_to_deliver_report" readonly="1"/>
+                                <field name="delivery_line_status" readonly="1"/>
+                                <field name="delivery_days_remaining" readonly="1"/>
+                            </group>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- ACTION -->
+        <record id="action_sale_order_line_delivery_report" model="ir.actions.act_window">
+            <field name="name">Reporte de Entregas</field>
+            <field name="res_model">sale.order.line</field>
+            <field name="view_mode">tree,form</field>
+            <field name="search_view_id" ref="view_sale_order_line_delivery_report_search"/>
+            <field name="domain">[('display_type', '=', False), ('product_uom_qty', '>', 0)]</field>
+            <field name="context">{'search_default_pending_lines': 1}</field>
+        </record>
+
+        <!-- MENU -->
+        <menuitem id="menu_sale_order_line_delivery_report"
+                  name="Reporte de Entregas"
+                  parent="sale.sale_order_menu"
+                  action="action_sale_order_line_delivery_report"
+                  sequence="35"/>
+
+    </data>
+</odoo>

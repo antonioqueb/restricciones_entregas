@@ -6,6 +6,7 @@
     'description': """
         Configura la fecha de entrega por defecto a 15 días desde la creación de la orden de venta.
         Restringe la modificación de esta fecha solo al administrador.
+        Agrega fecha de entrega por línea y reporte segregado de entregas.
     """,
     'author': 'Alphaqueb Consulting SAS',
     'website': 'http://www.alphaqueb.com',
@@ -13,6 +14,7 @@
     'data': [
         'security/security.xml',
         'views/sale_order_views.xml',
+        'views/sale_order_line_delivery_report_views.xml',
     ],
     'installable': True,
     'application': False,

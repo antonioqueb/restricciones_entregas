@@ -12,19 +12,24 @@
                     <field name="order_partner_id"/>
                     <field name="product_id"/>
                     <field name="line_commitment_date"/>
+                    <field name="delivery_line_status"/>
                     <field name="state"/>
 
                     <filter string="Pendientes"
                             name="pending_lines"
-                            domain="[('display_type', '=', False), ('product_uom_qty', '>', qty_delivered)]"/>
+                            domain="[('display_type', '=', False), ('qty_to_deliver_report', '>', 0)]"/>
 
                     <filter string="Entregadas"
                             name="delivered_lines"
-                            domain="[('display_type', '=', False), ('qty_delivered', '>=', product_uom_qty)]"/>
+                            domain="[('display_type', '=', False), ('delivery_line_status', '=', 'Entregada')]"/>
 
                     <filter string="Vencidas"
                             name="overdue_lines"
-                            domain="[('display_type', '=', False), ('line_commitment_date', '&lt;', context_today()), ('product_uom_qty', '&gt;', qty_delivered)]"/>
+                            domain="[('display_type', '=', False), ('delivery_line_status', '=', 'Vencida')]"/>
+
+                    <filter string="Próximas"
+                            name="upcoming_lines"
+                            domain="[('display_type', '=', False), ('delivery_line_status', '=', 'Próxima')]"/>
 
                     <filter string="Cotizaciones"
                             name="draft_sent"
@@ -42,6 +47,7 @@
                         <filter string="Fecha Entrega" name="group_date" context="{'group_by': 'line_commitment_date:day'}"/>
                         <filter string="Pedido" name="group_order" context="{'group_by': 'order_id'}"/>
                         <filter string="Estado Pedido" name="group_state" context="{'group_by': 'state'}"/>
+                        <filter string="Estatus Entrega" name="group_delivery_status" context="{'group_by': 'delivery_line_status'}"/>
                     </group>
                 </search>
             </field>

@@ -54,6 +54,23 @@ class SaleOrder(models.Model):
                 if not allowed:
                     raise UserError("No tienes permisos para modificar la fecha de entrega en órdenes confirmadas.")
 
+    def _minimum_allowed_commitment_date(self):
+        self.ensure_one()
+        base_dt = self.date_order or fields.Datetime.now()
+        return base_dt + timedelta(days=15)
+
+    def _validate_commitment_date_minimum(self, commitment_date_value, order_name=None):
+        self.ensure_one()
+        if not commitment_date_value:
+            return
+        minimum_date = self._minimum_allowed_commitment_date()
+        if commitment_date_value < minimum_date:
+            label = order_name or self.name or "el pedido"
+            raise UserError(
+                f"La fecha de entrega para {label} no puede ser menor a 15 días posteriores "
+                f"a la fecha del pedido. Mínimo permitido: {fields.Datetime.to_string(minimum_date)}"
+            )
+
     def _get_pending_delivery_lines(self):
         self.ensure_one()
         return self.order_line.filtered(
@@ -77,11 +94,6 @@ class SaleOrder(models.Model):
                     'commitment_date': next_date
                 })
 
-    def _validate_commitment_date_not_before_order(self, commitment_date_value, order_date_value, order_name=None):
-        if commitment_date_value and order_date_value and commitment_date_value < order_date_value:
-            label = order_name or "el pedido"
-            raise UserError(f"La fecha de entrega prometida no puede ser anterior a la fecha del pedido ({label}).")
-
     def _has_multiple_pending_line_dates(self):
         self.ensure_one()
         dates = set(self._get_pending_delivery_lines().mapped('line_commitment_date'))
@@ -93,8 +105,7 @@ class SaleOrder(models.Model):
 
         for order, vals in zip(orders, vals_list):
             commitment_date = fields.Datetime.from_string(vals['commitment_date']) if vals.get('commitment_date') else order.commitment_date
-            order_date = fields.Datetime.from_string(vals['date_order']) if vals.get('date_order') else order.date_order
-            order._validate_commitment_date_not_before_order(commitment_date, order_date, order.name)
+            order._validate_commitment_date_minimum(commitment_date, order.name)
 
             for line in order.order_line.filtered(lambda l: not l.display_type and not l.line_commitment_date):
                 line.with_context(skip_order_commitment_sync=True).write({
@@ -120,12 +131,12 @@ class SaleOrder(models.Model):
 
             new_commitment_date = fields.Datetime.from_string(vals['commitment_date'])
             for order in self:
-                order._validate_commitment_date_not_before_order(new_commitment_date, order.date_order, order.name)
+                order._validate_commitment_date_minimum(new_commitment_date, order.name)
 
                 if order._has_multiple_pending_line_dates():
                     raise UserError(
                         "No puedes modificar la fecha global porque la orden ya tiene múltiples fechas de entrega por línea. "
-                        "Debes editar la programación directamente en las líneas."
+                        "Debes editar las fechas directamente en las líneas."
                     )
 
         res = super().write(vals)

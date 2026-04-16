@@ -7,9 +7,9 @@ class SaleOrderLine(models.Model):
     _inherit = 'sale.order.line'
 
     line_commitment_date = fields.Datetime(
-        string='Fecha Entrega Línea',
+        string='Fecha de Entrega Línea',
         default=lambda self: self._default_line_commitment_date(),
-        help="Fecha comprometida para esta línea específica."
+        help="Fecha comprometida específica para esta línea."
     )
 
     client_order_ref = fields.Char(
@@ -81,16 +81,23 @@ class SaleOrderLine(models.Model):
             else:
                 line.delivery_line_status = 'Pendiente'
 
+    def _minimum_allowed_line_commitment_date(self):
+        self.ensure_one()
+        base_dt = self.order_id.date_order or fields.Datetime.now()
+        return base_dt + timedelta(days=15)
+
     @api.constrains('line_commitment_date', 'order_id')
     def _check_line_commitment_date(self):
         for line in self:
             if not line.line_commitment_date or not line.order_id or not line.order_id.date_order:
                 continue
 
-            if line.line_commitment_date < line.order_id.date_order:
+            minimum_date = line._minimum_allowed_line_commitment_date()
+            if line.line_commitment_date < minimum_date:
                 raise UserError(
                     f"La fecha de entrega de la línea ({line.product_id.display_name or line.name}) "
-                    f"no puede ser anterior a la fecha del pedido."
+                    f"no puede ser menor a 15 días posteriores a la fecha del pedido. "
+                    f"Mínimo permitido: {fields.Datetime.to_string(minimum_date)}"
                 )
 
     @api.model_create_multi

@@ -15,29 +15,33 @@
                     <field name="delivery_line_status"/>
                     <field name="state"/>
 
+                    <filter string="Con Fecha de Entrega"
+                            name="with_line_commitment_date"
+                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False)]"/>
+
                     <filter string="Pendientes"
                             name="pending_lines"
-                            domain="[('display_type', '=', False), ('qty_to_deliver_report', '>', 0)]"/>
+                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('qty_to_deliver_report', '>', 0)]"/>
 
                     <filter string="Entregadas"
                             name="delivered_lines"
-                            domain="[('display_type', '=', False), ('delivery_line_status', '=', 'Entregada')]"/>
+                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('delivery_line_status', '=', 'Entregada')]"/>
 
                     <filter string="Vencidas"
                             name="overdue_lines"
-                            domain="[('display_type', '=', False), ('delivery_line_status', '=', 'Vencida')]"/>
+                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('delivery_line_status', '=', 'Vencida')]"/>
 
                     <filter string="Próximas"
                             name="upcoming_lines"
-                            domain="[('display_type', '=', False), ('delivery_line_status', '=', 'Próxima')]"/>
+                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('delivery_line_status', '=', 'Próxima')]"/>
 
                     <filter string="Cotizaciones"
                             name="draft_sent"
-                            domain="[('order_id.state', 'in', ['draft', 'sent'])]"/>
+                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('order_id.state', 'in', ['draft', 'sent'])]"/>
 
                     <filter string="Órdenes de Venta"
                             name="sale_orders"
-                            domain="[('order_id.state', 'in', ['sale', 'done'])]"/>
+                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('order_id.state', 'in', ['sale', 'done'])]"/>
 
                     <separator/>
 
@@ -95,7 +99,7 @@
                                 <field name="name" readonly="1"/>
                             </group>
                             <group>
-                                <field name="line_commitment_date"/>
+                                <field name="line_commitment_date" readonly="1"/>
                                 <field name="product_uom_qty" readonly="1"/>
                                 <field name="qty_delivered" readonly="1"/>
                                 <field name="qty_to_deliver_report" readonly="1"/>
@@ -114,8 +118,8 @@
             <field name="res_model">sale.order.line</field>
             <field name="view_mode">list,form</field>
             <field name="search_view_id" ref="view_sale_order_line_delivery_report_search"/>
-            <field name="domain">[('display_type', '=', False), ('product_uom_qty', '>', 0)]</field>
-            <field name="context">{'search_default_pending_lines': 1}</field>
+            <field name="domain">[('display_type', '=', False), ('product_uom_qty', '>', 0), ('line_commitment_date', '!=', False)]</field>
+            <field name="context">{'search_default_with_line_commitment_date': 1, 'search_default_pending_lines': 1}</field>
         </record>
 
         <!-- MENU -->

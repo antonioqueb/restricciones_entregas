@@ -6,6 +6,7 @@
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_order_form"/>
             <field name="arch" type="xml">
+
                 <xpath expr="//header" position="inside">
                     <field name="can_edit_commitment_date" invisible="1"/>
                 </xpath>
@@ -14,12 +15,31 @@
                     <attribute name="readonly">not can_edit_commitment_date</attribute>
                 </xpath>
 
-                <xpath expr="//field[@name='order_line']//field[@name='product_uom_qty']" position="after">
+                <!-- Ocultar el plazo en días nativo -->
+                <xpath expr="//field[@name='order_line']/list//field[@name='customer_lead']" position="attributes">
+                    <attribute name="column_invisible">1</attribute>
+                </xpath>
+
+                <xpath expr="//field[@name='order_line']/form//field[@name='customer_lead']" position="attributes">
+                    <attribute name="invisible">1</attribute>
+                </xpath>
+
+                <!-- Agregar fecha específica por línea -->
+                <xpath expr="//field[@name='order_line']/list//field[@name='product_uom_qty']" position="after">
                     <field name="line_commitment_date"
-                           string="Fecha Entrega Línea"
+                           string="Fecha Entrega"
+                           widget="date"
                            optional="show"
                            readonly="not parent.can_edit_commitment_date"/>
                 </xpath>
+
+                <xpath expr="//field[@name='order_line']/form//field[@name='product_uom_qty']" position="after">
+                    <field name="line_commitment_date"
+                           string="Fecha Entrega"
+                           widget="date"
+                           readonly="not parent.can_edit_commitment_date"/>
+                </xpath>
+
             </field>
         </record>
     </data>

@@ -2,7 +2,6 @@
 <odoo>
     <data>
 
-        <!-- SEARCH -->
         <record id="view_sale_order_line_delivery_report_search" model="ir.ui.view">
             <field name="name">sale.order.line.delivery.report.search</field>
             <field name="model">sale.order.line</field>
@@ -11,44 +10,44 @@
                     <field name="order_id"/>
                     <field name="order_partner_id"/>
                     <field name="product_id"/>
-                    <field name="line_commitment_date"/>
+                    <field name="report_commitment_date"/>
                     <field name="delivery_line_status"/>
                     <field name="state"/>
 
-                    <filter string="Con Fecha de Entrega"
-                            name="with_line_commitment_date"
-                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False)]"/>
+                    <filter string="En Reporte"
+                            name="with_report_date"
+                            domain="[('show_in_delivery_report', '=', True)]"/>
 
                     <filter string="Pendientes"
                             name="pending_lines"
-                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('qty_to_deliver_report', '>', 0)]"/>
+                            domain="[('show_in_delivery_report', '=', True), ('qty_to_deliver_report', '>', 0)]"/>
 
                     <filter string="Entregadas"
                             name="delivered_lines"
-                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('delivery_line_status', '=', 'Entregada')]"/>
+                            domain="[('show_in_delivery_report', '=', True), ('delivery_line_status', '=', 'Entregada')]"/>
 
                     <filter string="Vencidas"
                             name="overdue_lines"
-                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('delivery_line_status', '=', 'Vencida')]"/>
+                            domain="[('show_in_delivery_report', '=', True), ('delivery_line_status', '=', 'Vencida')]"/>
 
                     <filter string="Próximas"
                             name="upcoming_lines"
-                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('delivery_line_status', '=', 'Próxima')]"/>
+                            domain="[('show_in_delivery_report', '=', True), ('delivery_line_status', '=', 'Próxima')]"/>
 
                     <filter string="Cotizaciones"
                             name="draft_sent"
-                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('order_id.state', 'in', ['draft', 'sent'])]"/>
+                            domain="[('show_in_delivery_report', '=', True), ('order_id.state', 'in', ['draft', 'sent'])]"/>
 
                     <filter string="Órdenes de Venta"
                             name="sale_orders"
-                            domain="[('display_type', '=', False), ('line_commitment_date', '!=', False), ('order_id.state', 'in', ['sale', 'done'])]"/>
+                            domain="[('show_in_delivery_report', '=', True), ('order_id.state', 'in', ['sale', 'done'])]"/>
 
                     <separator/>
 
                     <group expand="0" string="Agrupar por">
                         <filter string="Cliente" name="group_partner" context="{'group_by': 'order_partner_id'}"/>
                         <filter string="Producto" name="group_product" context="{'group_by': 'product_id'}"/>
-                        <filter string="Fecha Entrega" name="group_date" context="{'group_by': 'line_commitment_date:day'}"/>
+                        <filter string="Fecha Entrega" name="group_date" context="{'group_by': 'report_commitment_date:day'}"/>
                         <filter string="Pedido" name="group_order" context="{'group_by': 'order_id'}"/>
                         <filter string="Estado Pedido" name="group_state" context="{'group_by': 'state'}"/>
                         <filter string="Estatus Entrega" name="group_delivery_status" context="{'group_by': 'delivery_line_status'}"/>
@@ -57,13 +56,12 @@
             </field>
         </record>
 
-        <!-- LIST -->
         <record id="view_sale_order_line_delivery_report_list" model="ir.ui.view">
             <field name="name">sale.order.line.delivery.report.list</field>
             <field name="model">sale.order.line</field>
             <field name="arch" type="xml">
-                <list string="Reporte de Entregas" create="false" delete="false" default_order="line_commitment_date asc, order_id asc, id asc">
-                    <field name="line_commitment_date" string="Fecha Entrega"/>
+                <list string="Reporte de Entregas" create="false" delete="false" default_order="report_commitment_date asc, order_id asc, id asc">
+                    <field name="report_commitment_date" string="Fecha Entrega"/>
                     <field name="order_id" string="OV"/>
                     <field name="order_partner_id" string="Cliente"/>
                     <field name="client_order_ref" string="OC Cliente"/>
@@ -83,7 +81,6 @@
             </field>
         </record>
 
-        <!-- FORM -->
         <record id="view_sale_order_line_delivery_report_form" model="ir.ui.view">
             <field name="name">sale.order.line.delivery.report.form</field>
             <field name="model">sale.order.line</field>
@@ -99,12 +96,14 @@
                                 <field name="name" readonly="1"/>
                             </group>
                             <group>
+                                <field name="report_commitment_date" readonly="1"/>
                                 <field name="line_commitment_date" readonly="1"/>
                                 <field name="product_uom_qty" readonly="1"/>
                                 <field name="qty_delivered" readonly="1"/>
                                 <field name="qty_to_deliver_report" readonly="1"/>
                                 <field name="delivery_line_status" readonly="1"/>
                                 <field name="delivery_days_remaining" readonly="1"/>
+                                <field name="show_in_delivery_report" readonly="1"/>
                             </group>
                         </group>
                     </sheet>
@@ -112,17 +111,15 @@
             </field>
         </record>
 
-        <!-- ACTION -->
         <record id="action_sale_order_line_delivery_report" model="ir.actions.act_window">
             <field name="name">Reporte de Entregas</field>
             <field name="res_model">sale.order.line</field>
             <field name="view_mode">list,form</field>
             <field name="search_view_id" ref="view_sale_order_line_delivery_report_search"/>
-            <field name="domain">[('display_type', '=', False), ('product_uom_qty', '>', 0), ('line_commitment_date', '!=', False)]</field>
-            <field name="context">{'search_default_with_line_commitment_date': 1, 'search_default_pending_lines': 1}</field>
+            <field name="domain">[('show_in_delivery_report', '=', True)]</field>
+            <field name="context">{'search_default_with_report_date': 1, 'search_default_pending_lines': 1}</field>
         </record>
 
-        <!-- MENU -->
         <menuitem id="menu_sale_order_line_delivery_report"
                   name="Reporte de Entregas"
                   parent="sale.sale_order_menu"

@@ -2,6 +2,8 @@ from odoo import models, fields, api
 from datetime import timedelta
 from odoo.exceptions import UserError
 
+DELIVERY_LINE_CUTOFF = '2026-04-16 00:00:00'
+
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
@@ -9,13 +11,32 @@ class SaleOrder(models.Model):
     commitment_date = fields.Datetime(
         string='Fecha de Entrega Prometida',
         default=lambda self: self._default_commitment_date(),
-        help="Representa la próxima fecha de entrega pendiente de la orden."
+        help="Representa la próxima fecha efectiva de entrega pendiente de la orden."
     )
 
     can_edit_commitment_date = fields.Boolean(
         string="Puede Editar Fecha de Entrega",
         compute='_compute_can_edit_commitment_date'
     )
+
+    use_line_delivery_schedule = fields.Boolean(
+        string='Usa Programación por Línea',
+        compute='_compute_use_line_delivery_schedule',
+        store=True,
+        readonly=True,
+        help='Indica si la orden pertenece al nuevo esquema de programación por línea.'
+    )
+
+    @api.model
+    def _delivery_line_cutoff_dt(self):
+        return fields.Datetime.from_string(DELIVERY_LINE_CUTOFF)
+
+    @api.depends('date_order')
+    def _compute_use_line_delivery_schedule(self):
+        cutoff = self._delivery_line_cutoff_dt()
+        for order in self:
+            order_date = order.date_order or fields.Datetime.now()
+            order.use_line_delivery_schedule = order_date >= cutoff
 
     @api.model
     def _default_commitment_date(self):
@@ -75,8 +96,9 @@ class SaleOrder(models.Model):
         self.ensure_one()
         return self.order_line.filtered(
             lambda l: not l.display_type
-            and l.line_commitment_date
+            and l.report_commitment_date
             and l.product_uom_qty > l.qty_delivered
+            and l.show_in_delivery_report
         )
 
     def _get_next_pending_line_commitment_date(self):
@@ -84,7 +106,7 @@ class SaleOrder(models.Model):
         pending_lines = self._get_pending_delivery_lines()
         if not pending_lines:
             return False
-        return min(pending_lines.mapped('line_commitment_date'))
+        return min(pending_lines.mapped('report_commitment_date'))
 
     def _sync_commitment_date_from_lines(self):
         for order in self:
@@ -96,7 +118,7 @@ class SaleOrder(models.Model):
 
     def _has_multiple_pending_line_dates(self):
         self.ensure_one()
-        dates = set(self._get_pending_delivery_lines().mapped('line_commitment_date'))
+        dates = set(self._get_pending_delivery_lines().mapped('report_commitment_date'))
         return len(dates) > 1
 
     @api.model_create_multi
@@ -107,10 +129,11 @@ class SaleOrder(models.Model):
             commitment_date = fields.Datetime.from_string(vals['commitment_date']) if vals.get('commitment_date') else order.commitment_date
             order._validate_commitment_date_minimum(commitment_date, order.name)
 
-            for line in order.order_line.filtered(lambda l: not l.display_type and not l.line_commitment_date):
-                line.with_context(skip_order_commitment_sync=True).write({
-                    'line_commitment_date': order.commitment_date
-                })
+            if order.use_line_delivery_schedule:
+                for line in order.order_line.filtered(lambda l: not l.display_type and not l.line_commitment_date):
+                    line.with_context(skip_order_commitment_sync=True).write({
+                        'line_commitment_date': order.commitment_date
+                    })
 
             order._sync_commitment_date_from_lines()
 
@@ -133,7 +156,7 @@ class SaleOrder(models.Model):
             for order in self:
                 order._validate_commitment_date_minimum(new_commitment_date, order.name)
 
-                if order._has_multiple_pending_line_dates():
+                if order.use_line_delivery_schedule and order._has_multiple_pending_line_dates():
                     raise UserError(
                         "No puedes modificar la fecha global porque la orden ya tiene múltiples fechas de entrega por línea. "
                         "Debes editar las fechas directamente en las líneas."
@@ -142,11 +165,12 @@ class SaleOrder(models.Model):
         res = super().write(vals)
 
         if 'commitment_date' in vals and not self.env.context.get('skip_commitment_line_sync'):
-            for order in self:
+            for order in self.filtered(lambda o: o.use_line_delivery_schedule):
                 for line in order.order_line.filtered(lambda l: not l.display_type):
-                    line.with_context(skip_order_commitment_sync=True).write({
-                        'line_commitment_date': order.commitment_date
-                    })
+                    if not line.line_commitment_date:
+                        line.with_context(skip_order_commitment_sync=True).write({
+                            'line_commitment_date': order.commitment_date
+                        })
 
         user_name = self.env.user.display_name
         for order in self:

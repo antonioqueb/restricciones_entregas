@@ -16,6 +16,7 @@ mismo módulo: una orden de venta puede tener varios (S00300-1, S00300-2).
 import base64
 import io
 import logging
+import re
 from datetime import timedelta
 
 from odoo import api, fields, models, _
@@ -688,18 +689,78 @@ class DeliveryEvidenceControl(models.Model):
             identifiers = [control.name or '']
             identifiers += (control.production_folios or '').split(', ')
             identifiers += control.sale_order_ids.mapped('name')
+            identifiers += (control.client_order_ref or '').split(', ')
             for identifier in identifiers:
                 if identifier:
                     index.setdefault(identifier.strip().lower(), control)
 
         matched = self.browse()
-        for token in tokens:
+        unmatched = []
+        for token in sorted(tokens):
             control = index.get(token)
             if control:
                 matched |= control
+            else:
+                unmatched.append(token)
+
+        # Diagnóstico de tokens con forma de folio que no empataron: si la
+        # orden de venta o la factura existen, el control se crea al vuelo;
+        # si no hay factura publicada, se explica por qué no puede palomearse.
+        folio_pattern = re.compile(r'^[a-z]{0,6}[\-/]?\d{3,}([\-/]\d+)?$')
+        diagnostics = []
+        SaleOrder = self.env['sale.order']
+        Move = self.env['account.move']
+        for token in unmatched[:300]:
+            if not folio_pattern.match(token):
+                continue
+            order = SaleOrder.search([('name', '=ilike', token)], limit=1)
+            if order:
+                invoices = order.invoice_ids.filtered(
+                    lambda m: m.move_type == 'out_invoice' and m.state == 'posted')
+                if invoices:
+                    self._sync_from_moves(invoices)
+                    new_controls = self.search([('move_id', 'in', invoices.ids)])
+                    matched |= new_controls
+                    diagnostics.append({
+                        'token': order.name, 'status': 'created',
+                        'detail': _('Orden de venta con factura publicada: se creó su '
+                                    'control y ya aparece en la lista.'),
+                    })
+                else:
+                    diagnostics.append({
+                        'token': order.name, 'status': 'no_invoice',
+                        'detail': _('La orden de venta existe pero aún no tiene factura '
+                                    'de cliente publicada; no hay expediente que palomear.'),
+                    })
+                continue
+            move = Move.search([
+                ('name', '=ilike', token), ('move_type', '=', 'out_invoice'),
+            ], limit=1)
+            if move:
+                if move.state == 'posted':
+                    self._sync_from_moves(move)
+                    matched |= self.search([('move_id', '=', move.id)])
+                    diagnostics.append({
+                        'token': move.name, 'status': 'created',
+                        'detail': _('Factura sin control previo: se creó y ya aparece '
+                                    'en la lista.'),
+                    })
+                else:
+                    diagnostics.append({
+                        'token': move.name, 'status': 'no_invoice',
+                        'detail': _('La factura existe pero no está publicada.'),
+                    })
+            else:
+                diagnostics.append({
+                    'token': token, 'status': 'unknown',
+                    'detail': _('No corresponde a ninguna factura, orden de venta, '
+                                'OC de cliente ni folio de producción.'),
+                })
+
         return {
             'matched': [c._js_row() for c in matched.sorted(
                 key=lambda c: (c.invoice_date or fields.Date.today(), c.id))],
+            'diagnostics': diagnostics[:40],
             'cells_scanned': len(tokens),
         }
 

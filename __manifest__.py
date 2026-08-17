@@ -1,6 +1,6 @@
 {
     'name': 'Restricciones Entregas - Fecha Entrega Hexagonos',
-    'version': '18.0.2.1',
+    'version': '18.0.2.2',
     'category': 'Sales',
     'summary': 'Configurar fecha de entrega por defecto a 15 días',
     'description': """

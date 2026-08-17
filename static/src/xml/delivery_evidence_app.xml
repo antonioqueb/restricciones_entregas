@@ -236,6 +236,20 @@
               <span t-if="state.excel.scanning" class="deva-meta">Analizando…</span>
             </div>
 
+            <div t-if="state.excel.diagnostics.length" class="deva-diaglist">
+              <t t-foreach="state.excel.diagnostics" t-as="diag" t-key="diag_index">
+                <div t-att-class="'deva-diag deva-diag-' + diag.status">
+                  <b t-esc="diag.token"/> — <t t-esc="diag.detail"/>
+                </div>
+              </t>
+            </div>
+            <div t-if="!state.excel.matches.length and !state.excel.diagnostics.length and state.excel.fileName and !state.excel.scanning"
+                 class="deva-hint">
+              Ninguna celda coincidió con folios conocidos. Verifica que el archivo
+              traiga los folios de factura (ej. FA/2026/0001), órdenes de venta
+              (S10978) u OC de cliente, y que las facturas estén sincronizadas.
+            </div>
+
             <div t-if="state.excel.matches.length" class="deva-excel-list">
               <t t-foreach="state.excel.matches" t-as="row" t-key="row.id">
                 <label class="deva-excel-row">

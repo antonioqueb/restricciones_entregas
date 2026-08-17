@@ -231,7 +231,10 @@ export class DeliveryEvidenceApp extends Component {
     // Excel: subir y palomear en lote
     // ------------------------------------------------------------------
     openExcel() {
-        this.state.excel = { open: true, matches: [], selected: {}, scanning: false, fileName: "" };
+        this.state.excel = {
+            open: true, matches: [], selected: {}, scanning: false,
+            fileName: "", diagnostics: [],
+        };
     }
 
     async onExcelSelected(ev) {
@@ -249,12 +252,11 @@ export class DeliveryEvidenceApp extends Component {
         try {
             const result = await this.orm.call(CTRL, "js_match_excel", [b64, file.name]);
             this.state.excel.matches = result.matched;
+            this.state.excel.diagnostics = result.diagnostics || [];
             this.state.excel.selected = Object.fromEntries(
                 result.matched.map((m) => [m.id, true]));
-            if (!result.matched.length) {
-                this.notification.add(
-                    "Ninguna celda del Excel coincidió con folios de factura, ventas o producción.",
-                    { type: "warning" });
+            if (result.matched.length) {
+                await this._refreshAll();
             }
         } catch (error) {
             this._notifyError(error);

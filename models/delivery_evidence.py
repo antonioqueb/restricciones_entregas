@@ -296,28 +296,28 @@ class DeliveryEvidenceControl(models.Model):
         return True
 
     def action_mark_ready(self):
+        """Marca el expediente como completo, sin trabas.
+
+        No exige evidencias, observaciones ni permisos especiales: el flujo
+        mínimo de la casa es capturar folio/fecha/importe de la factura
+        Compact y marcar. Lo que falte se anota informativamente en el
+        chatter para trazabilidad, pero no bloquea.
+        """
         self.ensure_one()
         if self.doc_state == 'sent':
             raise UserError(_('El control ya fue enviado a Administración.'))
-        if not self.evidence_ids.filtered(lambda e: e.state == 'validated'):
-            raise UserError(_('No se puede completar el expediente sin al menos una evidencia validada.'))
-        exception = False
-        if self.qty_pending > 0.001 or self.delivery_state != 'delivered':
-            if not self._is_manager():
-                raise UserError(_(
-                    'La orden aún tiene cantidad pendiente de entregar. Solo el '
-                    'responsable puede completar el expediente con una excepción justificada.'))
-            if not (self.notes or '').strip():
-                raise UserError(_(
-                    'Para usar la excepción captura primero la justificación en Observaciones.'))
-            exception = True
-        self.write({'doc_state': 'ready', 'ready_exception': exception})
+        pending = self.qty_pending > 0.001 or self.delivery_state != 'delivered'
+        self.write({'doc_state': 'ready', 'ready_exception': pending})
+        missing = []
+        if pending:
+            missing.append(_('%(qty)s pendiente de entregar') % {'qty': self.qty_pending})
+        if not self.evidence_ids:
+            missing.append(_('sin evidencias cargadas'))
+        if not self.compact_invoice_folio:
+            missing.append(_('sin factura Compact capturada'))
         body = _('Expediente marcado como completo para Administración.')
-        if exception:
-            body = _(
-                'EXCEPCIÓN: expediente completado con %(qty)s pendiente de entregar. '
-                'Justificación: %(notes)s'
-            ) % {'qty': self.qty_pending, 'notes': self.notes}
+        if missing:
+            body += _(' Nota: %s.') % ', '.join(missing)
         self.message_post(body=body)
         return True
 

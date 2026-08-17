@@ -353,10 +353,19 @@
     </record>
 
     <!-- ============================ Menús ============================ -->
+    <record id="action_delivery_evidence_app" model="ir.actions.client">
+        <field name="name">Entregas y Evidencias</field>
+        <field name="tag">delivery_evidence_app</field>
+    </record>
+
     <menuitem id="menu_delivery_evidence_root"
               name="Entregas y Evidencias"
               sequence="37"
+              web_icon="restricciones_entregas,static/description/evidencias.svg"
               groups="restricciones_entregas.group_delivery_evidence_user"/>
+
+    <menuitem id="menu_delivery_evidence_center" name="Centro de operación"
+              parent="menu_delivery_evidence_root" action="action_delivery_evidence_app" sequence="5"/>
 
     <menuitem id="menu_delivery_evidence_all" name="Visor general"
               parent="menu_delivery_evidence_root" action="action_delivery_evidence_all" sequence="10"/>

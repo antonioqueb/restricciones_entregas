@@ -1,6 +1,6 @@
 {
     'name': 'Restricciones Entregas - Fecha Entrega Hexagonos',
-    'version': '18.0.2.0',
+    'version': '18.0.2.1',
     'category': 'Sales',
     'summary': 'Configurar fecha de entrega por defecto a 15 días',
     'description': """
@@ -21,6 +21,13 @@
         'views/sale_order_line_delivery_report_views.xml',
         'views/delivery_evidence_views.xml',
     ],
+    'assets': {
+        'web.assets_backend': [
+            'restricciones_entregas/static/src/scss/delivery_evidence_app.scss',
+            'restricciones_entregas/static/src/js/delivery_evidence_app.js',
+            'restricciones_entregas/static/src/xml/delivery_evidence_app.xml',
+        ],
+    },
     'installable': True,
     'application': False,
     'license': 'LGPL-3',

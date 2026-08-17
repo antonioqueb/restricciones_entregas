@@ -1,0 +1,329 @@
+// ======================================================================
+// Entregas y Evidencias — Centro de operación (OWL client action)
+// Mismo sistema de diseño que la app de Asistencias HMX.
+// ======================================================================
+
+$deva-ink: #14425c;
+$deva-ink-soft: #6a7d8a;
+$deva-teal: #1f6e96;
+$deva-green: #2e7d5b;
+$deva-red: #b3453c;
+$deva-orange: #c9762b;
+$deva-yellow: #b99a2e;
+$deva-bg: #f2f5f8;
+$deva-line: #dde6ec;
+
+@keyframes deva-fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes deva-spin { to { transform: rotate(360deg); } }
+
+.deva-app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: $deva-bg;
+    color: $deva-ink;
+    font-size: 14px;
+
+    .deva-loading {
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        height: 60vh; color: $deva-ink-soft; font-size: 16px;
+    }
+    .deva-spinner {
+        width: 22px; height: 22px; border-radius: 50%;
+        border: 3px solid $deva-line; border-top-color: $deva-teal;
+        animation: deva-spin 0.8s linear infinite;
+    }
+
+    // ---------------- Barra superior ----------------
+    .deva-topbar {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 16px; flex-wrap: wrap;
+        padding: 18px 26px;
+        background: linear-gradient(120deg, $deva-ink 0%, $deva-teal 90%);
+        color: #fff;
+
+        h1 { margin: 0; font-size: 22px; font-weight: 800; color: #fff; }
+
+        .deva-flow {
+            display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap;
+
+            .deva-step {
+                font-size: 11px; font-weight: 600;
+                background: rgba(255, 255, 255, 0.14);
+                border: 1px solid rgba(255, 255, 255, 0.25);
+                border-radius: 999px; padding: 2px 10px;
+            }
+        }
+
+        .deva-topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    }
+
+    .deva-btn-light {
+        border: none; border-radius: 10px; background: #fff; color: $deva-ink;
+        font-weight: 700; padding: 9px 16px; cursor: pointer;
+        &:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); }
+    }
+
+    .deva-btn-ghost-light {
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        background: rgba(255, 255, 255, 0.12); color: #fff;
+        border-radius: 10px; padding: 9px 14px; font-weight: 600; cursor: pointer;
+        &:hover { background: rgba(255, 255, 255, 0.22); }
+        &:disabled { opacity: 0.6; cursor: default; }
+    }
+
+    // ---------------- Pestañas y buscador ----------------
+    .deva-toolbar {
+        display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        padding: 12px 26px;
+        background: rgba(242, 245, 248, 0.94);
+        border-bottom: 1px solid $deva-line;
+        position: sticky; top: 0; z-index: 10;
+        backdrop-filter: blur(6px);
+    }
+
+    .deva-tabs {
+        display: inline-flex; gap: 2px; padding: 3px;
+        background: #fff; border: 1px solid $deva-line; border-radius: 10px;
+        flex-wrap: wrap;
+    }
+
+    .deva-tab {
+        border: none; background: transparent; border-radius: 8px;
+        padding: 7px 12px; font-weight: 600; color: $deva-ink-soft; cursor: pointer;
+
+        .deva-count {
+            background: $deva-bg; border-radius: 999px; padding: 1px 7px;
+            font-size: 11px; margin-left: 4px;
+        }
+
+        &.deva-tab-active {
+            background: $deva-teal; color: #fff;
+            .deva-count { background: rgba(255, 255, 255, 0.25); }
+        }
+    }
+
+    .deva-search {
+        flex: 1; min-width: 260px; padding: 9px 14px;
+        border: 1.5px solid $deva-line; border-radius: 10px;
+        &:focus { outline: none; border-color: $deva-teal;
+                  box-shadow: 0 0 0 3px rgba(31, 110, 150, 0.12); }
+    }
+
+    // ---------------- Cuerpo: lista + detalle ----------------
+    .deva-body { flex: 1; display: flex; overflow: hidden; }
+
+    .deva-list {
+        flex: 1; overflow-y: auto; padding: 14px 26px 60px;
+        display: flex; flex-direction: column; gap: 8px;
+        &.deva-list-narrow { max-width: 46%; }
+    }
+
+    .deva-row {
+        display: flex; justify-content: space-between; gap: 14px;
+        text-align: left; width: 100%;
+        background: #fff; border: 1px solid $deva-line; border-left-width: 4px;
+        border-radius: 12px; padding: 12px 16px; cursor: pointer;
+        animation: deva-fade-up 0.15s ease;
+        transition: box-shadow 0.12s ease, transform 0.12s ease;
+
+        &:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(20, 66, 92, 0.12); }
+        &.deva-row-open { box-shadow: inset 0 0 0 2px $deva-teal; }
+
+        &.deva-row-pending { border-left-color: $deva-red; }
+        &.deva-row-warn { border-left-color: $deva-yellow; }
+        &.deva-row-review { border-left-color: $deva-red; background: rgba(179, 69, 60, 0.04); }
+        &.deva-row-ready { border-left-color: $deva-green; }
+        &.deva-row-sent { border-left-color: #7d93a5; opacity: 0.85; }
+    }
+
+    .deva-row-main { min-width: 0; }
+    .deva-row-title { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+    .deva-folio { font-weight: 800; letter-spacing: 0.3px; }
+    .deva-money { font-weight: 700; color: $deva-teal; font-variant-numeric: tabular-nums; }
+    .deva-row-sub { color: $deva-ink-soft; font-size: 12px; margin-top: 2px; }
+    .deva-row-folios { font-size: 12px; color: $deva-teal; margin-top: 3px; font-weight: 600; }
+
+    .deva-row-side {
+        display: flex; flex-direction: column; align-items: flex-end; gap: 5px;
+        min-width: 190px;
+    }
+
+    .deva-mini-track {
+        width: 160px; height: 7px; border-radius: 999px;
+        background: $deva-bg; overflow: hidden;
+    }
+    .deva-mini-fill {
+        height: 100%; border-radius: 999px;
+        background: linear-gradient(90deg, $deva-teal, $deva-green);
+    }
+
+    .deva-badges { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .deva-badge {
+        font-size: 10.5px; font-weight: 700; border-radius: 999px;
+        padding: 2px 9px; white-space: nowrap;
+
+        &.deva-d-pending { background: rgba(179, 69, 60, 0.12); color: $deva-red; }
+        &.deva-d-partial { background: rgba(201, 118, 43, 0.14); color: $deva-orange; }
+        &.deva-d-delivered { background: rgba(46, 125, 91, 0.13); color: $deva-green; }
+        &.deva-d-review { background: rgba(179, 69, 60, 0.18); color: $deva-red; }
+        &.deva-d-cancelled { background: $deva-bg; color: $deva-ink-soft; }
+
+        &.deva-e-no_evidence { background: rgba(185, 154, 46, 0.16); color: $deva-yellow; }
+        &.deva-e-partial_evidence { background: rgba(201, 118, 43, 0.14); color: $deva-orange; }
+        &.deva-e-evidence_received { background: rgba(46, 125, 91, 0.13); color: $deva-green; }
+        &.deva-e-ready { background: $deva-green; color: #fff; }
+        &.deva-e-sent { background: #7d93a5; color: #fff; }
+        &.deva-exception { background: rgba(185, 154, 46, 0.9); color: #fff; }
+    }
+
+    .deva-days { font-size: 11px; color: $deva-red; font-weight: 600; }
+
+    .deva-empty {
+        margin: 60px auto; max-width: 480px; text-align: center; color: $deva-ink-soft;
+    }
+
+    // ---------------- Detalle ----------------
+    .deva-detail {
+        width: 54%; overflow-y: auto;
+        background: #fff; border-left: 1px solid $deva-line;
+        padding: 20px 24px 60px;
+        animation: deva-fade-up 0.18s ease;
+    }
+
+    .deva-detail-head {
+        display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+    }
+    .deva-detail-title { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        .deva-folio { font-size: 18px; } }
+    .deva-detail-sub { color: $deva-ink-soft; margin-top: 3px; }
+
+    .deva-close {
+        border: 1px solid $deva-line; background: #fff; border-radius: 10px;
+        width: 34px; height: 34px; cursor: pointer; color: $deva-ink-soft;
+        &:hover { border-color: $deva-red; color: $deva-red; }
+    }
+
+    .deva-detail-links {
+        display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 12px 0;
+    }
+    .deva-link {
+        border: none; background: none; color: $deva-teal; font-weight: 700;
+        cursor: pointer; padding: 0; text-decoration: underline;
+    }
+    .deva-meta { color: $deva-ink-soft; font-size: 12px; }
+
+    .deva-alert {
+        background: rgba(179, 69, 60, 0.07); border: 1px solid rgba(179, 69, 60, 0.3);
+        color: $deva-red; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;
+        font-size: 13px; white-space: pre-line;
+    }
+
+    .deva-section { margin-top: 18px; }
+    .deva-section-title {
+        display: flex; justify-content: space-between; align-items: center; gap: 10px;
+        font-size: 12px; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 1.2px; color: $deva-ink-soft; margin-bottom: 8px;
+    }
+    .deva-section-kpi { color: $deva-teal; text-transform: none; letter-spacing: 0; font-size: 13px; }
+
+    .deva-table {
+        width: 100%; border-collapse: collapse; font-size: 13px;
+
+        th { text-align: left; color: $deva-ink-soft; font-size: 11px;
+             text-transform: uppercase; padding: 5px 8px; border-bottom: 1.5px solid $deva-line; }
+        td { padding: 7px 8px; border-bottom: 1px solid $deva-bg; }
+        .deva-num { text-align: right; font-variant-numeric: tabular-nums; }
+        .deva-tr-ok td { color: $deva-green; }
+        .deva-tr-review td { color: $deva-red; background: rgba(179, 69, 60, 0.05); }
+    }
+
+    // Evidencias
+    .deva-upload { display: inline-flex; gap: 8px; align-items: center; }
+    .deva-select-sm {
+        border: 1.5px solid $deva-line; border-radius: 8px; padding: 5px 8px;
+        font-size: 12px; background: #fff;
+    }
+    .deva-btn-sm { padding: 6px 12px !important; font-size: 12px; }
+
+    .deva-evidence {
+        display: flex; justify-content: space-between; align-items: center; gap: 10px;
+        border: 1px solid $deva-line; border-radius: 10px;
+        padding: 9px 12px; margin-bottom: 6px;
+    }
+    .deva-evidence-name { font-weight: 700; color: $deva-ink; text-decoration: none;
+        &:hover { color: $deva-teal; } }
+    .deva-evidence-meta { font-size: 11.5px; color: $deva-ink-soft; margin-top: 2px; }
+
+    .deva-notes {
+        width: 100%; min-height: 64px; border: 1.5px solid $deva-line; border-radius: 10px;
+        padding: 9px 12px; resize: vertical;
+        &:focus { outline: none; border-color: $deva-teal; }
+    }
+
+    .deva-hint { color: $deva-ink-soft; font-size: 12.5px; margin: 6px 0; }
+
+    .deva-detail-actions {
+        display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px;
+        padding-top: 14px; border-top: 1px solid $deva-line;
+    }
+
+    .deva-btn-primary {
+        border: none; border-radius: 10px;
+        background: linear-gradient(120deg, $deva-teal, $deva-ink);
+        color: #fff; font-weight: 700; padding: 10px 18px; cursor: pointer;
+        &:hover { box-shadow: 0 6px 16px rgba(20, 66, 92, 0.3); }
+        &:disabled { opacity: 0.6; cursor: default; }
+        &.deva-danger { background: $deva-red; }
+    }
+
+    .deva-btn-ghost {
+        border: 1.5px solid $deva-line; background: #fff; border-radius: 10px;
+        padding: 9px 14px; font-weight: 600; color: $deva-ink; cursor: pointer;
+        &:hover { border-color: $deva-teal; color: $deva-teal; }
+        &:disabled { opacity: 0.6; cursor: default; }
+    }
+
+    // ---------------- Modal Excel ----------------
+    .deva-overlay {
+        position: fixed; inset: 0; background: rgba(20, 66, 92, 0.5);
+        backdrop-filter: blur(3px); z-index: 100;
+        display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+
+    .deva-modal {
+        background: #fff; border-radius: 16px; padding: 24px;
+        max-width: 640px; width: 100%; max-height: 85vh; overflow-y: auto;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+        animation: deva-fade-up 0.2s ease;
+        h3 { margin: 0 0 8px; font-weight: 800; }
+    }
+
+    .deva-excel-list {
+        margin: 14px 0; border: 1px solid $deva-line; border-radius: 10px;
+        max-height: 44vh; overflow-y: auto;
+    }
+
+    .deva-excel-row {
+        display: flex; align-items: center; gap: 10px;
+        padding: 9px 12px; border-bottom: 1px solid $deva-bg;
+        cursor: pointer; margin: 0;
+        &:hover { background: $deva-bg; }
+        input { width: 16px; height: 16px; }
+        .deva-meta { flex: 1; }
+    }
+
+    .deva-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+    // ---------------- Responsive ----------------
+    @media (max-width: 1000px) {
+        .deva-body { flex-direction: column; overflow: visible; }
+        .deva-list.deva-list-narrow { max-width: 100%; }
+        .deva-detail { width: 100%; border-left: none; border-top: 2px solid $deva-line; }
+    }
+}

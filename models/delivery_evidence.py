@@ -13,7 +13,10 @@ movimientos reales de inventario ligados a las líneas de venta
 de producción son los folios por línea de venta (delivery_folio) de este
 mismo módulo: una orden de venta puede tener varios (S00300-1, S00300-2).
 """
+import base64
+import io
 import logging
+from datetime import timedelta
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
@@ -469,6 +472,236 @@ class DeliveryEvidenceControl(models.Model):
         if any(c.doc_state == 'sent' for c in self) and not self._is_manager():
             raise UserError(_('Un control enviado a Administración no se puede eliminar.'))
         return super().unlink()
+
+    # ==================================================================
+    # API para la aplicación OWL (Centro de operación)
+    # ==================================================================
+    TAB_DOMAINS = {
+        'all': [],
+        'pending': [('delivery_state', 'in', ['pending', 'partial'])],
+        'no_evidence': [('delivery_state', '=', 'delivered'),
+                        ('doc_state', 'in', ['no_evidence', 'partial_evidence'])],
+        'ready': [('doc_state', '=', 'ready')],
+        'sent': [('doc_state', '=', 'sent')],
+        'review': [('delivery_state', '=', 'review')],
+    }
+
+    @api.model
+    def js_bootstrap(self):
+        counts = {
+            tab: self.search_count(domain)
+            for tab, domain in self.TAB_DOMAINS.items()
+        }
+        return {
+            'user_name': self.env.user.name,
+            'is_manager': self.env.user.has_group(
+                'restricciones_entregas.group_delivery_evidence_manager'),
+            'counts': counts,
+            'evidence_types': [
+                {'value': v, 'label': l}
+                for v, l in self.env['delivery.evidence.document']._fields['evidence_type'].selection
+            ],
+        }
+
+    @api.model
+    def js_list(self, tab='all', search='', limit=120):
+        domain = list(self.TAB_DOMAINS.get(tab, []))
+        if search:
+            term = search.strip()
+            domain += ['|', '|', '|', '|',
+                       ('name', 'ilike', term),
+                       ('partner_id', 'ilike', term),
+                       ('client_order_ref', 'ilike', term),
+                       ('production_folios', 'ilike', term),
+                       ('sale_order_ids.name', 'ilike', term)]
+        controls = self.search(domain, limit=limit, order='invoice_date desc, id desc')
+        return [c._js_row() for c in controls]
+
+    def _js_row(self):
+        self.ensure_one()
+        return {
+            'id': self.id,
+            'name': self.name or '',
+            'partner': self.partner_id.name or '',
+            'partner_code': self.partner_code or '',
+            'date': self.invoice_date and self.invoice_date.strftime('%d/%m/%Y') or '',
+            'amount_total': self.amount_total,
+            'currency': self.currency_id.name or 'MXN',
+            'qty_invoiced': self.qty_invoiced,
+            'qty_delivered': self.qty_delivered,
+            'qty_pending': self.qty_pending,
+            'pct': round(self.delivered_pct, 1),
+            'delivery_state': self.delivery_state,
+            'doc_state': self.doc_state,
+            'days': self.days_without_evidence,
+            'folios': self.production_folios or '',
+            'oc': self.client_order_ref or '',
+            'sales': ', '.join(self.sale_order_ids.mapped('name')),
+            'evidence_count': len(self.evidence_ids),
+            'sent_date': self.sent_date and fields.Datetime.context_timestamp(
+                self, self.sent_date).strftime('%d/%m/%Y') or '',
+            'exception': self.ready_exception,
+        }
+
+    def js_detail(self):
+        self.ensure_one()
+        data = self._js_row()
+        data.update({
+            'amount_untaxed': self.amount_untaxed,
+            'amount_tax': self.amount_tax,
+            'move_state': self.move_state,
+            'review_reason': self.review_reason or '',
+            'notes': self.notes or '',
+            'responsible': self.responsible_id.name or '',
+            'evidence_received_date': self.evidence_received_date and
+                self.evidence_received_date.strftime('%d/%m/%Y') or '',
+            'lines': [{
+                'id': l.id,
+                'product': l.product_id.display_name or '',
+                'folio': l.production_folio or '',
+                'uom': l.uom_id.name or '',
+                'qty_invoiced': l.qty_invoiced,
+                'qty_delivered': l.qty_delivered_net,
+                'qty_returned': l.qty_returned,
+                'qty_pending': l.qty_pending,
+                'review': l.needs_review,
+                'review_reason': l.review_reason or '',
+            } for l in self.line_ids],
+            'evidences': [{
+                'id': e.id,
+                'type': e.evidence_type,
+                'type_label': dict(e._fields['evidence_type'].selection)[e.evidence_type],
+                'name': e.name,
+                'file_name': e.file_name or '',
+                'url': '/web/content?model=delivery.evidence.document&field=file'
+                       f'&id={e.id}&download=true&filename={e.file_name or e.name}',
+                'doc_date': e.doc_date and e.doc_date.strftime('%d/%m/%Y') or '',
+                'uploaded_by': e.create_uid.name,
+                'uploaded_at': fields.Datetime.context_timestamp(
+                    e, e.create_date).strftime('%d/%m/%Y %H:%M'),
+                'state': e.state,
+                'validated_by': e.validated_by_id.name or '',
+                'notes': e.notes or '',
+            } for e in self.evidence_ids],
+        })
+        return data
+
+    def js_add_evidence(self, vals):
+        self.ensure_one()
+        self.env['delivery.evidence.document'].create({
+            'control_id': self.id,
+            'evidence_type': vals.get('evidence_type') or 'remision_firmada',
+            'name': vals.get('name') or vals.get('file_name') or _('Evidencia'),
+            'file': vals['file'],
+            'file_name': vals.get('file_name'),
+            'doc_date': vals.get('doc_date') or False,
+            'notes': vals.get('notes') or False,
+        })
+        return self.js_detail()
+
+    def js_action(self, action):
+        """Ejecuta una acción del flujo y regresa el detalle actualizado."""
+        self.ensure_one()
+        actions = {
+            'refresh': self.action_refresh,
+            'validate': self.action_validate_evidence,
+            'ready': self.action_mark_ready,
+            'sent': self.action_mark_sent,
+            'reopen': self.action_reopen,
+        }
+        if action not in actions:
+            raise UserError(_('Acción no reconocida.'))
+        actions[action]()
+        return self.js_detail()
+
+    def js_set_notes(self, notes):
+        self.ensure_one()
+        self.notes = notes or False
+        return True
+
+    def js_validate_document(self, document_id):
+        self.ensure_one()
+        doc = self.evidence_ids.filtered(lambda d: d.id == document_id)
+        doc.action_validate()
+        return self.js_detail()
+
+    @api.model
+    def js_bulk_action(self, control_ids, action):
+        """Aplica una acción a varios controles; reporta éxito/fallo por folio."""
+        results = {'ok': [], 'failed': []}
+        for control in self.browse(control_ids):
+            try:
+                with self.env.cr.savepoint():
+                    control.js_action(action)
+                results['ok'].append(control.name)
+            except UserError as error:
+                results['failed'].append({'name': control.name, 'reason': str(error)})
+        return results
+
+    @api.model
+    def js_sync_recent(self, days=60):
+        if not self.env.user.has_group('restricciones_entregas.group_delivery_evidence_manager'):
+            raise UserError(_('Solo el responsable puede sincronizar facturas.'))
+        date_from = fields.Date.context_today(self) - timedelta(days=days)
+        moves = self.env['account.move'].search([
+            ('move_type', '=', 'out_invoice'),
+            ('state', '=', 'posted'),
+            ('invoice_date', '>=', date_from),
+        ])
+        stats = self._sync_from_moves(moves)
+        stats['total'] = len(moves)
+        return stats
+
+    @api.model
+    def js_match_excel(self, file_b64, filename):
+        """Empata un Excel contra los controles por folio de factura, orden de
+        venta o folio de producción: sirve para palomear en lote lo que venga
+        listado en cualquier layout de Excel."""
+        content = base64.b64decode(file_b64)
+        fname = (filename or '').lower()
+        tokens = set()
+        if fname.endswith('.xlsx'):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+            for sheet in wb.worksheets:
+                for row in sheet.iter_rows(values_only=True):
+                    for value in row:
+                        if isinstance(value, str) and 2 < len(value.strip()) <= 64:
+                            tokens.add(value.strip().lower())
+        elif fname.endswith('.xls'):
+            try:
+                import xlrd
+            except ImportError:
+                raise UserError(_('El servidor no puede leer .xls; guarda el archivo como .xlsx.'))
+            wb = xlrd.open_workbook(file_contents=content)
+            for sheet in wb.sheets():
+                for r in range(sheet.nrows):
+                    for c in range(sheet.ncols):
+                        value = sheet.cell_value(r, c)
+                        if isinstance(value, str) and 2 < len(value.strip()) <= 64:
+                            tokens.add(value.strip().lower())
+        else:
+            raise UserError(_('Sube un archivo .xlsx o .xls.'))
+
+        index = {}
+        for control in self.search([]):
+            identifiers = [control.name or '']
+            identifiers += (control.production_folios or '').split(', ')
+            identifiers += control.sale_order_ids.mapped('name')
+            for identifier in identifiers:
+                if identifier:
+                    index.setdefault(identifier.strip().lower(), control)
+
+        matched = self.browse()
+        for token in tokens:
+            control = index.get(token)
+            if control:
+                matched |= control
+        return {
+            'matched': [c._js_row() for c in matched.sorted(
+                key=lambda c: (c.invoice_date or fields.Date.today(), c.id))],
+            'cells_scanned': len(tokens),
+        }
 
 
 class DeliveryEvidenceControlLine(models.Model):

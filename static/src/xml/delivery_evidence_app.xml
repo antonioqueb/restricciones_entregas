@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+
+  <t t-name="restricciones_entregas.EvidenceApp">
+    <div class="deva-app">
+
+      <t t-if="state.loading">
+        <div class="deva-loading"><div class="deva-spinner"/> Cargando…</div>
+      </t>
+
+      <t t-else="">
+        <!-- ============================ Barra superior ============================ -->
+        <div class="deva-topbar">
+          <div class="deva-topbar-left">
+            <h1>Entregas y Evidencias</h1>
+            <div class="deva-flow">
+              <span class="deva-step">1 · Facturas</span>
+              <span class="deva-step">2 · Evidencias</span>
+              <span class="deva-step">3 · Listas</span>
+              <span class="deva-step">4 · Relación y envío</span>
+            </div>
+          </div>
+          <div class="deva-topbar-actions">
+            <button t-if="state.bootstrap.is_manager" type="button" class="deva-btn-ghost-light"
+                    t-att-disabled="state.busy" t-on-click="syncRecent">
+              ⟳ Sincronizar facturas
+            </button>
+            <button type="button" class="deva-btn-ghost-light" t-on-click="openExcel">
+              ⇪ Cargar Excel
+            </button>
+            <button type="button" class="deva-btn-light" t-on-click="generateReport">
+              Generar relación
+            </button>
+          </div>
+        </div>
+
+        <!-- ============================ Pestañas y buscador ============================ -->
+        <div class="deva-toolbar">
+          <div class="deva-tabs">
+            <t t-foreach="tabs" t-as="tab" t-key="tab.id">
+              <button type="button"
+                      t-att-class="'deva-tab' + (state.tab === tab.id ? ' deva-tab-active' : '')"
+                      t-on-click="() => this.setTab(tab.id)">
+                <t t-esc="tab.label"/> <span class="deva-count" t-esc="tab.count"/>
+              </button>
+            </t>
+          </div>
+          <input type="text" class="deva-search"
+                 placeholder="Buscar factura, cliente, OC, orden de venta o folio de producción…"
+                 t-att-value="state.search" t-on-input="onSearch"/>
+        </div>
+
+        <div class="deva-body">
+          <!-- ============================ Lista ============================ -->
+          <div t-att-class="'deva-list' + (state.detail ? ' deva-list-narrow' : '')">
+            <t t-foreach="state.rows" t-as="row" t-key="row.id">
+              <button type="button"
+                      t-att-class="'deva-row ' + rowClass(row) + (state.detail and state.detail.id === row.id ? ' deva-row-open' : '')"
+                      t-on-click="() => this.openDetail(row)">
+                <div class="deva-row-main">
+                  <div class="deva-row-title">
+                    <span class="deva-folio" t-esc="row.name"/>
+                    <span class="deva-money" t-esc="money(row)"/>
+                  </div>
+                  <div class="deva-row-sub">
+                    <span t-esc="row.date"/> · <span t-esc="row.partner"/>
+                    <t t-if="row.oc"> · OC <t t-esc="row.oc"/></t>
+                  </div>
+                  <div t-if="row.folios" class="deva-row-folios">⚙ <t t-esc="row.folios"/></div>
+                </div>
+                <div class="deva-row-side">
+                  <div class="deva-mini-track" t-att-title="row.pct + '% entregado'">
+                    <div class="deva-mini-fill" t-att-style="pctStyle(row)"/>
+                  </div>
+                  <div class="deva-badges">
+                    <span t-att-class="'deva-badge deva-d-' + row.delivery_state"
+                          t-esc="deliveryLabel(row.delivery_state)"/>
+                    <span t-att-class="'deva-badge deva-e-' + row.doc_state"
+                          t-esc="docLabel(row.doc_state)"/>
+                  </div>
+                  <div t-if="row.days" class="deva-days">⏱ <t t-esc="row.days"/> días sin evidencia</div>
+                </div>
+              </button>
+            </t>
+            <div t-if="!state.rows.length" class="deva-empty">
+              <p><b>No hay facturas en esta pestaña.</b></p>
+              <p t-if="state.bootstrap.is_manager">
+                Usa <b>⟳ Sincronizar facturas</b> para traer las facturas de cliente
+                publicadas de los últimos 60 días. Las nuevas entran solas al publicarse.
+              </p>
+            </div>
+          </div>
+
+          <!-- ============================ Panel de detalle ============================ -->
+          <div t-if="state.detail" class="deva-detail">
+            <div class="deva-detail-head">
+              <div>
+                <div class="deva-detail-title">
+                  <span class="deva-folio" t-esc="state.detail.name"/>
+                  <span t-att-class="'deva-badge deva-e-' + state.detail.doc_state"
+                        t-esc="docLabel(state.detail.doc_state)"/>
+                  <span t-if="state.detail.exception" class="deva-badge deva-exception">Excepción</span>
+                </div>
+                <div class="deva-detail-sub">
+                  <t t-esc="state.detail.partner"/> · <t t-esc="state.detail.date"/> ·
+                  <b t-esc="money(state.detail)"/>
+                </div>
+              </div>
+              <button type="button" class="deva-close" t-on-click="closeDetail">✕</button>
+            </div>
+
+            <div class="deva-detail-links">
+              <button type="button" class="deva-link" t-on-click="openInvoiceForm">Abrir factura</button>
+              <span t-if="state.detail.sales" class="deva-meta">OV: <t t-esc="state.detail.sales"/></span>
+              <span t-if="state.detail.oc" class="deva-meta">OC cliente: <t t-esc="state.detail.oc"/></span>
+            </div>
+
+            <div t-if="state.detail.review_reason" class="deva-alert">
+              <b>Requiere revisión:</b> <t t-esc="state.detail.review_reason"/>
+            </div>
+
+            <!-- Entrega por producto -->
+            <div class="deva-section">
+              <div class="deva-section-title">Entrega
+                <span class="deva-section-kpi">
+                  <t t-esc="state.detail.qty_delivered"/> de <t t-esc="state.detail.qty_invoiced"/>
+                  (<t t-esc="state.detail.pct"/>%)
+                </span>
+              </div>
+              <table class="deva-table">
+                <thead><tr>
+                  <th>Producto</th><th>Folio prod.</th><th class="deva-num">Fact.</th>
+                  <th class="deva-num">Entreg.</th><th class="deva-num">Dev.</th><th class="deva-num">Pend.</th>
+                </tr></thead>
+                <tbody>
+                  <t t-foreach="state.detail.lines" t-as="line" t-key="line.id">
+                    <tr t-att-class="line.review ? 'deva-tr-review' : (line.qty_pending ? '' : 'deva-tr-ok')"
+                        t-att-title="line.review_reason">
+                      <td t-esc="line.product"/>
+                      <td t-esc="line.folio"/>
+                      <td class="deva-num" t-esc="line.qty_invoiced"/>
+                      <td class="deva-num" t-esc="line.qty_delivered"/>
+                      <td class="deva-num" t-esc="line.qty_returned"/>
+                      <td class="deva-num" t-esc="line.qty_pending"/>
+                    </tr>
+                  </t>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Evidencias -->
+            <div class="deva-section">
+              <div class="deva-section-title">Evidencias
+                <span class="deva-upload">
+                  <select class="deva-select-sm" t-model="state.uploadType">
+                    <t t-foreach="state.bootstrap.evidence_types" t-as="et" t-key="et.value">
+                      <option t-att-value="et.value" t-esc="et.label"/>
+                    </t>
+                  </select>
+                  <button type="button" class="deva-btn-primary deva-btn-sm" t-on-click="triggerUpload">
+                    + Subir evidencia
+                  </button>
+                  <input type="file" class="d-none"
+                         accept=".pdf,.jpg,.jpeg,.png,.heic,.xlsx,.xls,.doc,.docx"
+                         t-on-change="onFileSelected"/>
+                </span>
+              </div>
+              <div t-if="!state.detail.evidences.length" class="deva-hint">
+                Sin evidencias todavía: sube la remisión firmada o sellada, el acuse o una foto.
+              </div>
+              <t t-foreach="state.detail.evidences" t-as="doc" t-key="doc.id">
+                <div class="deva-evidence">
+                  <div class="deva-evidence-main">
+                    <a t-att-href="doc.url" target="_blank" class="deva-evidence-name">
+                      📎 <t t-esc="doc.name"/>
+                    </a>
+                    <div class="deva-evidence-meta">
+                      <t t-esc="doc.type_label"/> · subió <t t-esc="doc.uploaded_by"/>
+                      el <t t-esc="doc.uploaded_at"/>
+                      <t t-if="doc.validated_by"> · validó <t t-esc="doc.validated_by"/></t>
+                    </div>
+                  </div>
+                  <span t-if="doc.state === 'validated'" class="deva-badge deva-e-evidence_received">Validada</span>
+                  <button t-else="" t-if="state.bootstrap.is_manager" type="button"
+                          class="deva-btn-ghost deva-btn-sm" t-on-click="() => this.validateDocument(doc)">
+                    ✓ Validar
+                  </button>
+                </div>
+              </t>
+            </div>
+
+            <!-- Administración -->
+            <div class="deva-section">
+              <div class="deva-section-title">Administración</div>
+              <textarea class="deva-notes" placeholder="Observaciones (obligatorias para excepciones)…"
+                        t-att-value="state.detail.notes" t-on-change="saveNotes"/>
+              <div t-if="state.detail.sent_date" class="deva-hint">
+                Enviado a Administración el <t t-esc="state.detail.sent_date"/>.
+              </div>
+            </div>
+
+            <div class="deva-detail-actions">
+              <button type="button" class="deva-btn-ghost" t-att-disabled="state.busy"
+                      t-on-click="() => this.runAction('refresh')">⟳ Actualizar</button>
+              <button t-if="state.bootstrap.is_manager and state.detail.doc_state !== 'sent'"
+                      type="button" class="deva-btn-ghost" t-att-disabled="state.busy"
+                      t-on-click="() => this.runAction('validate')">Validar evidencias</button>
+              <button t-if="!['ready','sent'].includes(state.detail.doc_state)"
+                      type="button" class="deva-btn-primary" t-att-disabled="state.busy"
+                      t-on-click="() => this.runAction('ready')">Marcar lista</button>
+              <button t-if="state.bootstrap.is_manager and state.detail.doc_state === 'ready'"
+                      type="button" class="deva-btn-primary" t-att-disabled="state.busy"
+                      t-on-click="() => this.runAction('sent')">Marcar enviada</button>
+              <button t-if="state.bootstrap.is_manager and ['ready','sent'].includes(state.detail.doc_state)"
+                      type="button" class="deva-btn-ghost" t-att-disabled="state.busy"
+                      t-on-click="() => this.runAction('reopen')">Reabrir</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============================ Modal Excel ============================ -->
+        <div t-if="state.excel.open" class="deva-overlay" t-on-click.self="() => { state.excel.open = false; }">
+          <div class="deva-modal">
+            <h3>Palomear desde Excel</h3>
+            <p class="deva-hint">
+              Sube el Excel (el que te comparte Administración o el tuyo): el sistema
+              busca en todas las celdas folios de factura, órdenes de venta y folios de
+              producción, y te muestra las facturas encontradas para marcarlas en lote.
+            </p>
+            <div class="deva-upload">
+              <button type="button" class="deva-btn-primary" t-on-click="triggerUpload">
+                Elegir archivo .xlsx
+              </button>
+              <input type="file" class="d-none" accept=".xlsx,.xls" t-on-change="onExcelSelected"/>
+              <span t-if="state.excel.fileName" class="deva-meta" t-esc="state.excel.fileName"/>
+              <span t-if="state.excel.scanning" class="deva-meta">Analizando…</span>
+            </div>
+
+            <div t-if="state.excel.matches.length" class="deva-excel-list">
+              <t t-foreach="state.excel.matches" t-as="row" t-key="row.id">
+                <label class="deva-excel-row">
+                  <input type="checkbox" t-att-checked="state.excel.selected[row.id]"
+                         t-on-change="() => this.toggleExcelRow(row)"/>
+                  <span class="deva-folio" t-esc="row.name"/>
+                  <span class="deva-meta" t-esc="row.partner"/>
+                  <span t-att-class="'deva-badge deva-d-' + row.delivery_state"
+                        t-esc="deliveryLabel(row.delivery_state)"/>
+                  <span t-att-class="'deva-badge deva-e-' + row.doc_state"
+                        t-esc="docLabel(row.doc_state)"/>
+                </label>
+              </t>
+            </div>
+
+            <div class="deva-modal-actions">
+              <button type="button" class="deva-btn-ghost"
+                      t-on-click="() => { state.excel.open = false; }">Cerrar</button>
+              <button t-if="state.excel.matches.length" type="button"
+                      t-att-class="'deva-btn-primary' + (state.confirm === 'excel-ready' ? ' deva-danger' : '')"
+                      t-on-click="() => this.excelBulk('ready')">
+                <t t-if="state.confirm === 'excel-ready'">¿Confirmar marcar listas?</t>
+                <t t-else="">Marcar listas (<t t-esc="excelSelectedIds.length"/>)</t>
+              </button>
+              <button t-if="state.excel.matches.length and state.bootstrap.is_manager" type="button"
+                      t-att-class="'deva-btn-primary' + (state.confirm === 'excel-sent' ? ' deva-danger' : '')"
+                      t-on-click="() => this.excelBulk('sent')">
+                <t t-if="state.confirm === 'excel-sent'">¿Confirmar marcar enviadas?</t>
+                <t t-else="">Marcar enviadas (<t t-esc="excelSelectedIds.length"/>)</t>
+              </button>
+            </div>
+          </div>
+        </div>
+      </t>
+    </div>
+  </t>
+</templates>

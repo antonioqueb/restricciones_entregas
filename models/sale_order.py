@@ -2,7 +2,10 @@ from odoo import models, fields, api
 from datetime import timedelta
 from odoo.exceptions import UserError
 
-DELIVERY_LINE_CUTOFF = '2026-04-16 00:00:00'
+# Corte del esquema de programación por línea: 17-ago-2026 12:00 p.m.
+# America/Monterrey (UTC-6). Odoo almacena Datetime en UTC, por eso 18:00.
+# Única definición: sale_order_line.py la importa de aquí.
+DELIVERY_LINE_CUTOFF = '2026-08-17 18:00:00'
 
 
 class SaleOrder(models.Model):
@@ -110,6 +113,10 @@ class SaleOrder(models.Model):
 
     def _sync_commitment_date_from_lines(self):
         for order in self:
+            # Las órdenes históricas (anteriores al corte) conservan su fecha
+            # global intacta: ningún proceso automático puede reescribirla.
+            if not order.use_line_delivery_schedule:
+                continue
             next_date = order._get_next_pending_line_commitment_date()
             if next_date and order.commitment_date != next_date:
                 super(SaleOrder, order.with_context(skip_commitment_line_sync=True)).write({

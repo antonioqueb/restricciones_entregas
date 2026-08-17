@@ -2,15 +2,17 @@ from odoo import models, fields, api
 from datetime import timedelta, date
 from odoo.exceptions import UserError
 
-DELIVERY_LINE_CUTOFF = '2026-04-16 00:00:00'
+from .sale_order import DELIVERY_LINE_CUTOFF
 
 
 class SaleOrderLine(models.Model):
     _inherit = 'sale.order.line'
 
+    # Sin default: al crear la columna en una base existente, un default de
+    # "hoy + 15" se aplicaría masivamente a todas las líneas históricas.
+    # La fecha inicial de una línea nueva se copia de la orden en create().
     line_commitment_date = fields.Datetime(
         string='Fecha de Entrega Línea',
-        default=lambda self: self._default_line_commitment_date(),
         help="Fecha comprometida específica para esta línea."
     )
 
@@ -96,20 +98,6 @@ class SaleOrderLine(models.Model):
         self.ensure_one()
         order_date = self.order_id.date_order or fields.Datetime.now()
         return order_date >= self._delivery_line_cutoff_dt()
-
-    @api.model
-    def _default_line_commitment_date(self):
-        order_id = self.env.context.get('default_order_id')
-        if order_id:
-            order = self.env['sale.order'].browse(order_id)
-            if order and order.date_order and order.date_order >= fields.Datetime.from_string(DELIVERY_LINE_CUTOFF):
-                return order.commitment_date or fields.Datetime.to_string(order.date_order + timedelta(days=15))
-            return order.commitment_date or False
-
-        date_order = self.env.context.get('default_date_order', fields.Datetime.now())
-        return fields.Datetime.to_string(
-            fields.Datetime.from_string(date_order) + timedelta(days=15)
-        )
 
     @api.depends(
         'product_uom_qty',
@@ -227,7 +215,7 @@ class SaleOrderLine(models.Model):
         res = super().write(vals)
 
         if 'line_commitment_date' in vals:
-            for line in self.filtered(lambda l: not l.display_type and l.order_id and l.line_commitment_date):
+            for line in self.filtered(lambda l: not l.display_type and l.order_id):
                 old_value = old_dates.get(line.id)
                 new_value = line.line_commitment_date
                 if old_value != new_value:
@@ -242,7 +230,11 @@ class SaleOrderLine(models.Model):
                         subtype_xmlid='mail.mt_note'
                     )
 
-        if not self.env.context.get('skip_order_commitment_sync'):
+        # La fecha global solo se resincroniza cuando cambió algo que la
+        # determina. Una escritura ajena (folios, migraciones, etc.) no debe
+        # tocar sale_order.commitment_date.
+        sync_trigger_fields = {'line_commitment_date', 'product_uom_qty', 'qty_delivered'}
+        if sync_trigger_fields & vals.keys() and not self.env.context.get('skip_order_commitment_sync'):
             self.mapped('order_id')._sync_commitment_date_from_lines()
 
         return res

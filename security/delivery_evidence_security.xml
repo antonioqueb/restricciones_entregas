@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="module_category_delivery_evidence" model="ir.module.category">
+        <field name="name">Entregas y Evidencias</field>
+        <field name="sequence">32</field>
+    </record>
+
+    <record id="group_delivery_evidence_user" model="res.groups">
+        <field name="name">Usuario de Entregas y Evidencias</field>
+        <field name="category_id" ref="module_category_delivery_evidence"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+        <field name="comment">Consulta controles, carga evidencias, actualiza información y genera reportes.</field>
+    </record>
+
+    <record id="group_delivery_evidence_manager" model="res.groups">
+        <field name="name">Responsable de Entregas y Evidencias</field>
+        <field name="category_id" ref="module_category_delivery_evidence"/>
+        <field name="implied_ids" eval="[(4, ref('group_delivery_evidence_user'))]"/>
+        <field name="comment">Valida evidencias, completa expedientes, marca enviados, reabre y usa excepciones justificadas.</field>
+    </record>
+
+    <!-- Multiempresa: cada usuario solo ve controles de sus compañías. -->
+    <record id="rule_delivery_evidence_control_company" model="ir.rule">
+        <field name="name">Control de entregas: multiempresa</field>
+        <field name="model_id" ref="model_delivery_evidence_control"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="rule_delivery_evidence_line_company" model="ir.rule">
+        <field name="name">Detalle de control: multiempresa</field>
+        <field name="model_id" ref="model_delivery_evidence_control_line"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="rule_delivery_evidence_document_company" model="ir.rule">
+        <field name="name">Evidencias: multiempresa</field>
+        <field name="model_id" ref="model_delivery_evidence_document"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+</odoo>

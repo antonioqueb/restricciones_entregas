@@ -1,0 +1,382 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============================ Lista principal ============================ -->
+    <record id="view_delivery_evidence_control_list" model="ir.ui.view">
+        <field name="name">delivery.evidence.control.list</field>
+        <field name="model">delivery.evidence.control</field>
+        <field name="arch" type="xml">
+            <list string="Entregas y Evidencias"
+                  decoration-danger="delivery_state in ['pending', 'review']"
+                  decoration-warning="delivery_state == 'partial'"
+                  decoration-info="doc_state == 'sent'"
+                  decoration-success="doc_state in ['ready', 'sent'] and delivery_state == 'delivered'"
+                  decoration-muted="delivery_state == 'cancelled'">
+                <field name="invoice_date"/>
+                <field name="name" string="Serie y Folio"/>
+                <field name="partner_id"/>
+                <field name="partner_code" optional="show"/>
+                <field name="client_order_ref" optional="show"/>
+                <field name="sale_order_ids" widget="many2many_tags" optional="show"/>
+                <field name="production_folios" optional="show"/>
+                <field name="amount_total" sum="Total"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="qty_invoiced" sum="Facturado"/>
+                <field name="qty_delivered" sum="Entregado"/>
+                <field name="qty_pending" sum="Pendiente"/>
+                <field name="delivered_pct" widget="progressbar"/>
+                <field name="delivery_state" widget="badge"
+                       decoration-danger="delivery_state in ['pending', 'review']"
+                       decoration-warning="delivery_state == 'partial'"
+                       decoration-success="delivery_state == 'delivered'"/>
+                <field name="doc_state" widget="badge"
+                       decoration-danger="doc_state == 'no_evidence'"
+                       decoration-warning="doc_state == 'partial_evidence'"
+                       decoration-success="doc_state in ['evidence_received', 'ready']"
+                       decoration-info="doc_state == 'sent'"/>
+                <field name="days_without_evidence" optional="show"/>
+                <field name="responsible_id" optional="show" widget="many2one_avatar_user"/>
+                <field name="sent_date" optional="show"/>
+                <field name="company_id" groups="base.group_multi_company" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ============================ Formulario ============================ -->
+    <record id="view_delivery_evidence_control_form" model="ir.ui.view">
+        <field name="name">delivery.evidence.control.form</field>
+        <field name="model">delivery.evidence.control</field>
+        <field name="arch" type="xml">
+            <form string="Control de entregas y evidencias">
+                <header>
+                    <button name="action_refresh" type="object" string="Actualizar información"/>
+                    <button name="action_validate_evidence" type="object" string="Validar evidencia"
+                            groups="restricciones_entregas.group_delivery_evidence_manager"
+                            invisible="doc_state in ['ready', 'sent']"/>
+                    <button name="action_mark_ready" type="object" string="Marcar listo para Administración"
+                            class="btn-primary" invisible="doc_state in ['ready', 'sent']"/>
+                    <button name="action_generate_report" type="object" string="Generar relación"/>
+                    <button name="action_mark_sent" type="object" string="Marcar enviado a Administración"
+                            class="btn-primary" invisible="doc_state != 'ready'"
+                            groups="restricciones_entregas.group_delivery_evidence_manager"/>
+                    <button name="action_reopen" type="object" string="Reabrir"
+                            invisible="doc_state not in ['ready', 'sent']"
+                            groups="restricciones_entregas.group_delivery_evidence_manager"/>
+                    <field name="doc_state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_invoice" type="object" class="oe_stat_button" icon="fa-file-text-o">
+                            <span class="o_stat_text">Abrir factura</span>
+                        </button>
+                        <button name="action_open_sales" type="object" class="oe_stat_button"
+                                icon="fa-shopping-cart" invisible="sale_count == 0">
+                            <field name="sale_count" widget="statinfo" string="Ventas"/>
+                        </button>
+                        <button name="action_open_pickings" type="object" class="oe_stat_button"
+                                icon="fa-truck" invisible="picking_count == 0">
+                            <field name="picking_count" widget="statinfo" string="Entregas"/>
+                        </button>
+                    </div>
+                    <widget name="web_ribbon" title="Excepción" bg_color="text-bg-warning"
+                            invisible="not ready_exception"/>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group string="Datos de la factura">
+                        <group>
+                            <field name="move_id" readonly="1"/>
+                            <field name="partner_id"/>
+                            <field name="partner_code"/>
+                            <field name="invoice_date"/>
+                            <field name="move_state"/>
+                        </group>
+                        <group>
+                            <field name="currency_id"/>
+                            <field name="amount_untaxed"/>
+                            <field name="amount_tax"/>
+                            <field name="amount_total"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <group string="Ventas y producción">
+                        <group>
+                            <field name="sale_order_ids" widget="many2many_tags"/>
+                            <field name="client_order_ref"/>
+                        </group>
+                        <group>
+                            <field name="production_folios"/>
+                        </group>
+                    </group>
+                    <group string="Estado de entrega">
+                        <group>
+                            <field name="qty_invoiced"/>
+                            <field name="qty_delivered"/>
+                            <field name="qty_returned"/>
+                            <field name="qty_pending"/>
+                        </group>
+                        <group>
+                            <field name="delivered_pct" widget="progressbar"/>
+                            <field name="delivery_state"/>
+                            <field name="review_reason" invisible="delivery_state != 'review'"/>
+                        </group>
+                    </group>
+                    <field name="line_ids" readonly="1">
+                        <list decoration-danger="needs_review"
+                              decoration-success="qty_pending == 0 and not needs_review">
+                            <field name="product_id"/>
+                            <field name="production_folio"/>
+                            <field name="uom_id"/>
+                            <field name="qty_invoiced"/>
+                            <field name="qty_delivered_raw"/>
+                            <field name="qty_returned"/>
+                            <field name="qty_delivered_net"/>
+                            <field name="qty_pending"/>
+                            <field name="needs_review"/>
+                            <field name="review_reason" optional="hide"/>
+                        </list>
+                    </field>
+                    <group string="Evidencias">
+                        <field name="evidence_ids" nolabel="1" colspan="2">
+                            <list editable="bottom"
+                                  decoration-success="state == 'validated'">
+                                <field name="evidence_type"/>
+                                <field name="name"/>
+                                <field name="file" filename="file_name" widget="binary"/>
+                                <field name="file_name" column_invisible="1"/>
+                                <field name="doc_date"/>
+                                <field name="create_uid" string="Cargó"/>
+                                <field name="create_date" string="Fecha de carga"/>
+                                <field name="notes"/>
+                                <field name="state" widget="badge"
+                                       decoration-success="state == 'validated'"/>
+                                <field name="validated_by_id"/>
+                                <field name="validated_date" optional="hide"/>
+                                <button name="action_validate" type="object" string="Validar"
+                                        icon="fa-check" invisible="state == 'validated'"
+                                        groups="restricciones_entregas.group_delivery_evidence_manager"/>
+                            </list>
+                        </field>
+                    </group>
+                    <group string="Administración">
+                        <group>
+                            <field name="responsible_id"/>
+                            <field name="evidence_received_date"/>
+                            <field name="evidence_user_id"/>
+                            <field name="days_without_evidence"/>
+                        </group>
+                        <group>
+                            <field name="sent_date"/>
+                            <field name="sent_user_id"/>
+                            <field name="ready_exception"/>
+                            <field name="notes"/>
+                        </group>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================ Búsqueda ============================ -->
+    <record id="view_delivery_evidence_control_search" model="ir.ui.view">
+        <field name="name">delivery.evidence.control.search</field>
+        <field name="model">delivery.evidence.control</field>
+        <field name="arch" type="xml">
+            <search string="Entregas y Evidencias">
+                <field name="name" string="Factura"/>
+                <field name="partner_id"/>
+                <field name="client_order_ref"/>
+                <field name="sale_order_ids"/>
+                <field name="production_folios" string="Folio de producción"/>
+                <filter name="pending" string="Pendientes de entrega" domain="[('delivery_state', '=', 'pending')]"/>
+                <filter name="partial" string="Entregas parciales" domain="[('delivery_state', '=', 'partial')]"/>
+                <filter name="delivered_no_evidence" string="Entregados sin evidencia"
+                        domain="[('delivery_state', '=', 'delivered'), ('doc_state', 'in', ['no_evidence', 'partial_evidence'])]"/>
+                <filter name="with_evidence" string="Con evidencia"
+                        domain="[('doc_state', 'in', ['evidence_received', 'ready', 'sent'])]"/>
+                <filter name="ready" string="Listos para Administración" domain="[('doc_state', '=', 'ready')]"/>
+                <filter name="sent" string="Enviados" domain="[('doc_state', '=', 'sent')]"/>
+                <filter name="review" string="Requieren revisión" domain="[('delivery_state', '=', 'review')]"/>
+                <separator/>
+                <filter name="no_evidence_5" string="+5 días sin evidencia"
+                        domain="[('doc_state', 'in', ['no_evidence', 'partial_evidence']), ('invoice_date', '&lt;=', (context_today() - relativedelta(days=5)).strftime('%Y-%m-%d'))]"/>
+                <filter name="no_evidence_10" string="+10 días sin evidencia"
+                        domain="[('doc_state', 'in', ['no_evidence', 'partial_evidence']), ('invoice_date', '&lt;=', (context_today() - relativedelta(days=10)).strftime('%Y-%m-%d'))]"/>
+                <filter name="no_evidence_15" string="+15 días sin evidencia"
+                        domain="[('doc_state', 'in', ['no_evidence', 'partial_evidence']), ('invoice_date', '&lt;=', (context_today() - relativedelta(days=15)).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter name="this_month" string="Mes actual"
+                        domain="[('invoice_date', '&gt;=', context_today().strftime('%Y-%m-01'))]"/>
+                <filter name="last_month" string="Mes anterior"
+                        domain="[('invoice_date', '&gt;=', (context_today() - relativedelta(months=1)).strftime('%Y-%m-01')), ('invoice_date', '&lt;', context_today().strftime('%Y-%m-01'))]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_partner" string="Cliente" context="{'group_by': 'partner_id'}"/>
+                    <filter name="group_date" string="Fecha" context="{'group_by': 'invoice_date:day'}"/>
+                    <filter name="group_month" string="Mes" context="{'group_by': 'invoice_date:month'}"/>
+                    <filter name="group_delivery" string="Estado de entrega" context="{'group_by': 'delivery_state'}"/>
+                    <filter name="group_doc" string="Estado documental" context="{'group_by': 'doc_state'}"/>
+                    <filter name="group_responsible" string="Responsable" context="{'group_by': 'responsible_id'}"/>
+                    <filter name="group_company" string="Compañía" context="{'group_by': 'company_id'}" groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================ Acciones ============================ -->
+    <record id="action_delivery_evidence_all" model="ir.actions.act_window">
+        <field name="name">Visor general</field>
+        <field name="res_model">delivery.evidence.control</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_delivery_evidence_control_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Sin controles todavía</p>
+            <p>Usa Configuración → Sincronizar facturas para generar los controles
+               a partir de las facturas de cliente publicadas. Las facturas nuevas
+               crearán su control automáticamente al publicarse.</p>
+        </field>
+    </record>
+
+    <record id="action_delivery_evidence_pending" model="ir.actions.act_window">
+        <field name="name">Pendientes de entrega</field>
+        <field name="res_model">delivery.evidence.control</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_delivery_evidence_control_search"/>
+        <field name="domain">[('delivery_state', 'in', ['pending', 'partial'])]</field>
+    </record>
+
+    <record id="action_delivery_evidence_no_evidence" model="ir.actions.act_window">
+        <field name="name">Entregados sin evidencia</field>
+        <field name="res_model">delivery.evidence.control</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_delivery_evidence_control_search"/>
+        <field name="domain">[('delivery_state', '=', 'delivered'), ('doc_state', 'in', ['no_evidence', 'partial_evidence'])]</field>
+    </record>
+
+    <record id="action_delivery_evidence_ready" model="ir.actions.act_window">
+        <field name="name">Listos para Administración</field>
+        <field name="res_model">delivery.evidence.control</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_delivery_evidence_control_search"/>
+        <field name="domain">[('doc_state', '=', 'ready')]</field>
+    </record>
+
+    <record id="action_delivery_evidence_sent" model="ir.actions.act_window">
+        <field name="name">Enviados a Administración</field>
+        <field name="res_model">delivery.evidence.control</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_delivery_evidence_control_search"/>
+        <field name="domain">[('doc_state', '=', 'sent')]</field>
+    </record>
+
+    <!-- ============================ Wizards ============================ -->
+    <record id="view_delivery_evidence_sync_wizard_form" model="ir.ui.view">
+        <field name="name">delivery.evidence.sync.wizard.form</field>
+        <field name="model">delivery.evidence.sync.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Sincronizar facturas">
+                <field name="state" invisible="1"/>
+                <group invisible="state == 'done'">
+                    <group>
+                        <field name="date_from"/>
+                        <field name="date_to"/>
+                    </group>
+                    <group>
+                        <field name="company_id" groups="base.group_multi_company"/>
+                        <field name="partner_ids" widget="many2many_tags"/>
+                    </group>
+                </group>
+                <group invisible="state != 'done'">
+                    <field name="result" nolabel="1" readonly="1"/>
+                </group>
+                <footer>
+                    <button name="action_sync" type="object" string="Sincronizar"
+                            class="btn-primary" invisible="state == 'done'"/>
+                    <button string="Cerrar" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_delivery_evidence_sync_wizard" model="ir.actions.act_window">
+        <field name="name">Sincronizar facturas</field>
+        <field name="res_model">delivery.evidence.sync.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <record id="view_delivery_evidence_report_wizard_form" model="ir.ui.view">
+        <field name="name">delivery.evidence.report.wizard.form</field>
+        <field name="model">delivery.evidence.report.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Relación para Administración">
+                <field name="state" invisible="1"/>
+                <group invisible="state == 'done'">
+                    <group>
+                        <field name="date_from"/>
+                        <field name="date_to"/>
+                        <field name="partner_ids" widget="many2many_tags"/>
+                        <field name="company_id" groups="base.group_multi_company"/>
+                    </group>
+                    <group>
+                        <field name="delivery_state"/>
+                        <field name="doc_state"/>
+                        <field name="only_ready"/>
+                        <field name="only_not_sent"/>
+                    </group>
+                    <field name="control_ids" widget="many2many_tags" colspan="2"
+                           string="Solo estos controles (opcional)"/>
+                </group>
+                <group invisible="state != 'done'">
+                    <field name="file" filename="file_name" readonly="1" string="Descargar relación"/>
+                    <field name="file_name" invisible="1"/>
+                    <field name="included_ids" widget="many2many_tags" readonly="1"/>
+                </group>
+                <footer>
+                    <button name="action_generate" type="object" string="Generar Excel"
+                            class="btn-primary" invisible="state == 'done'"/>
+                    <button name="action_mark_included_sent" type="object"
+                            string="Marcar incluidos como enviados"
+                            invisible="state != 'done'"
+                            groups="restricciones_entregas.group_delivery_evidence_manager"
+                            confirm="¿Marcar como enviados a Administración todos los controles completos incluidos en esta relación?"/>
+                    <button string="Cerrar" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_delivery_evidence_report_wizard" model="ir.actions.act_window">
+        <field name="name">Relación para Administración</field>
+        <field name="res_model">delivery.evidence.report.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- ============================ Menús ============================ -->
+    <menuitem id="menu_delivery_evidence_root"
+              name="Entregas y Evidencias"
+              sequence="37"
+              groups="restricciones_entregas.group_delivery_evidence_user"/>
+
+    <menuitem id="menu_delivery_evidence_all" name="Visor general"
+              parent="menu_delivery_evidence_root" action="action_delivery_evidence_all" sequence="10"/>
+    <menuitem id="menu_delivery_evidence_pending" name="Pendientes de entrega"
+              parent="menu_delivery_evidence_root" action="action_delivery_evidence_pending" sequence="20"/>
+    <menuitem id="menu_delivery_evidence_no_evidence" name="Entregados sin evidencia"
+              parent="menu_delivery_evidence_root" action="action_delivery_evidence_no_evidence" sequence="30"/>
+    <menuitem id="menu_delivery_evidence_ready" name="Listos para Administración"
+              parent="menu_delivery_evidence_root" action="action_delivery_evidence_ready" sequence="40"/>
+    <menuitem id="menu_delivery_evidence_sent" name="Enviados a Administración"
+              parent="menu_delivery_evidence_root" action="action_delivery_evidence_sent" sequence="50"/>
+
+    <menuitem id="menu_delivery_evidence_reports" name="Reportes"
+              parent="menu_delivery_evidence_root" sequence="60"/>
+    <menuitem id="menu_delivery_evidence_report_wizard" name="Relación para Administración"
+              parent="menu_delivery_evidence_reports" action="action_delivery_evidence_report_wizard" sequence="10"/>
+
+    <menuitem id="menu_delivery_evidence_config" name="Configuración"
+              parent="menu_delivery_evidence_root" sequence="90"
+              groups="restricciones_entregas.group_delivery_evidence_manager"/>
+    <menuitem id="menu_delivery_evidence_sync" name="Sincronizar facturas"
+              parent="menu_delivery_evidence_config" action="action_delivery_evidence_sync_wizard" sequence="10"/>
+</odoo>

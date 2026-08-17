@@ -1,0 +1,9 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_dec_control_user,delivery.evidence.control user,model_delivery_evidence_control,group_delivery_evidence_user,1,1,1,0
+access_dec_control_manager,delivery.evidence.control manager,model_delivery_evidence_control,group_delivery_evidence_manager,1,1,1,1
+access_dec_line_user,delivery.evidence.control.line user,model_delivery_evidence_control_line,group_delivery_evidence_user,1,1,1,1
+access_dec_line_manager,delivery.evidence.control.line manager,model_delivery_evidence_control_line,group_delivery_evidence_manager,1,1,1,1
+access_dec_document_user,delivery.evidence.document user,model_delivery_evidence_document,group_delivery_evidence_user,1,1,1,1
+access_dec_document_manager,delivery.evidence.document manager,model_delivery_evidence_document,group_delivery_evidence_manager,1,1,1,1
+access_dec_sync_wizard,delivery.evidence.sync.wizard,model_delivery_evidence_sync_wizard,group_delivery_evidence_manager,1,1,1,1
+access_dec_report_wizard,delivery.evidence.report.wizard,model_delivery_evidence_report_wizard,group_delivery_evidence_user,1,1,1,1

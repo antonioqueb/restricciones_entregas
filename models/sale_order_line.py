@@ -14,6 +14,31 @@ class SaleOrderLine(models.Model):
         help="Fecha comprometida específica para esta línea."
     )
 
+    delivery_folio_number = fields.Integer(
+        string='Consecutivo de Folio',
+        copy=False,
+        readonly=True,
+        help='Consecutivo asignado a la línea dentro de la orden. Una vez asignado '
+             'no se renumera ni se reutiliza, aun si se eliminan otras líneas.'
+    )
+
+    delivery_folio = fields.Char(
+        string='Folio',
+        compute='_compute_delivery_folio',
+        store=True,
+        readonly=True,
+        help='Folio de seguimiento por línea: folio de la orden más el consecutivo '
+             'de la línea (ej. S00300-2).'
+    )
+
+    @api.depends('order_id.name', 'delivery_folio_number')
+    def _compute_delivery_folio(self):
+        for line in self:
+            if line.delivery_folio_number and line.order_id.name:
+                line.delivery_folio = f"{line.order_id.name}-{line.delivery_folio_number}"
+            else:
+                line.delivery_folio = False
+
     client_order_ref = fields.Char(
         string='OC Cliente',
         related='order_id.client_order_ref',
@@ -175,13 +200,16 @@ class SaleOrderLine(models.Model):
                     'line_commitment_date': line.order_id.commitment_date
                 })
 
+        lines.mapped('order_id')._assign_delivery_folio_numbers()
+
         if not self.env.context.get('skip_order_commitment_sync'):
             lines.mapped('order_id')._sync_commitment_date_from_lines()
 
         for line in lines.filtered(lambda l: not l.display_type and l.order_id and l.line_commitment_date):
+            folio = f" [{line.delivery_folio}]" if line.delivery_folio else ""
             line.order_id.message_post(
                 body=(
-                    f"Se programó fecha de entrega para la línea "
+                    f"Se programó fecha de entrega para la línea{folio} "
                     f"({line.product_id.display_name or line.name}): {line.line_commitment_date}"
                 ),
                 message_type='comment',
@@ -203,9 +231,10 @@ class SaleOrderLine(models.Model):
                 old_value = old_dates.get(line.id)
                 new_value = line.line_commitment_date
                 if old_value != new_value:
+                    folio = f" [{line.delivery_folio}]" if line.delivery_folio else ""
                     line.order_id.message_post(
                         body=(
-                            f"Cambio en fecha de entrega de línea "
+                            f"Cambio en fecha de entrega de línea{folio} "
                             f"({line.product_id.display_name or line.name}) "
                             f"- Antes: {old_value or 'N/A'} - Ahora: {new_value or 'N/A'}"
                         ),

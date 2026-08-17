@@ -116,6 +116,23 @@ class SaleOrder(models.Model):
                     'commitment_date': next_date
                 })
 
+    def _assign_delivery_folio_numbers(self):
+        """Asigna consecutivo de folio a las líneas de producto que no tengan uno.
+
+        El consecutivo continúa a partir del máximo ya asignado en la orden:
+        nunca se renumera ni se reutiliza, para que el folio (ej. S00300-2)
+        sea estable como referencia de seguimiento y planificación.
+        """
+        for order in self:
+            if not order.use_line_delivery_schedule:
+                continue
+            product_lines = order.order_line.filtered(lambda l: not l.display_type)
+            next_number = max(product_lines.mapped('delivery_folio_number') or [0]) + 1
+            for line in product_lines.sorted(key=lambda l: (l.sequence, l.id)):
+                if not line.delivery_folio_number:
+                    line.delivery_folio_number = next_number
+                    next_number += 1
+
     def _has_multiple_pending_line_dates(self):
         self.ensure_one()
         dates = set(self._get_pending_delivery_lines().mapped('report_commitment_date'))

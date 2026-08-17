@@ -1,12 +1,14 @@
 {
     'name': 'Restricciones Entregas - Fecha Entrega Hexagonos',
-    'version': '18.0.1.0',
+    'version': '18.0.1.1',
     'category': 'Sales',
     'summary': 'Configurar fecha de entrega por defecto a 15 días',
     'description': """
         Configura la fecha de entrega por defecto a 15 días desde la creación de la orden de venta.
         Restringe la modificación de esta fecha solo al administrador.
         Agrega fecha de entrega por línea y reporte segregado de entregas.
+        Asigna un folio consecutivo por línea (ej. S00300-1, S00300-2) para dar
+        seguimiento y planificar producción por línea sin dividir la orden de venta.
     """,
     'author': 'Alphaqueb Consulting SAS',
     'website': 'http://www.alphaqueb.com',

@@ -40,6 +40,15 @@
                            readonly="not parent.can_edit_commitment_date"/>
                 </xpath>
 
+                <!-- Folio de seguimiento por línea (consecutivo del folio de venta) -->
+                <xpath expr="//field[@name='order_line']/list//field[@name='line_commitment_date']" position="before">
+                    <field name="delivery_folio" string="Folio" optional="show" readonly="1"/>
+                </xpath>
+
+                <xpath expr="//field[@name='order_line']/form//field[@name='line_commitment_date']" position="before">
+                    <field name="delivery_folio" string="Folio" readonly="1"/>
+                </xpath>
+
             </field>
         </record>
     </data>

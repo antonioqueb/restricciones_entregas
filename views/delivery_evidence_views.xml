@@ -11,16 +11,16 @@
                   decoration-info="doc_state == 'sent'"
                   decoration-success="doc_state in ['ready', 'sent'] and delivery_state == 'delivered'"
                   decoration-muted="delivery_state == 'cancelled'">
-                <field name="invoice_date"/>
-                <field name="name" string="Serie y Folio"/>
+                <field name="order_date"/>
+                <field name="name" string="Orden de venta"/>
                 <field name="partner_id"/>
                 <field name="partner_code" optional="show"/>
                 <field name="client_order_ref" optional="show"/>
-                <field name="sale_order_ids" widget="many2many_tags" optional="show"/>
                 <field name="production_folios" optional="show"/>
+                <field name="compact_invoice_folio" optional="show"/>
                 <field name="amount_total" sum="Total"/>
                 <field name="currency_id" column_invisible="1"/>
-                <field name="qty_invoiced" sum="Facturado"/>
+                <field name="qty_ordered" sum="Pedido"/>
                 <field name="qty_delivered" sum="Entregado"/>
                 <field name="qty_pending" sum="Pendiente"/>
                 <field name="delivered_pct" widget="progressbar"/>
@@ -65,16 +65,12 @@
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
-                        <button name="action_open_invoice" type="object" class="oe_stat_button" icon="fa-file-text-o">
-                            <span class="o_stat_text">Abrir factura</span>
-                        </button>
-                        <button name="action_open_sales" type="object" class="oe_stat_button"
-                                icon="fa-shopping-cart" invisible="sale_count == 0">
-                            <field name="sale_count" widget="statinfo" string="Ventas"/>
+                        <button name="action_open_sale" type="object" class="oe_stat_button" icon="fa-shopping-cart">
+                            <span class="o_stat_text">Abrir venta</span>
                         </button>
                         <button name="action_open_pickings" type="object" class="oe_stat_button"
                                 icon="fa-truck" invisible="picking_count == 0">
-                            <field name="picking_count" widget="statinfo" string="Entregas"/>
+                            <field name="picking_count" widget="statinfo" string="Remisiones"/>
                         </button>
                     </div>
                     <widget name="web_ribbon" title="Excepción" bg_color="text-bg-warning"
@@ -82,36 +78,35 @@
                     <div class="oe_title">
                         <h1><field name="name" readonly="1"/></h1>
                     </div>
-                    <group string="Datos de la factura">
+                    <group string="Datos de la venta (Odoo)">
                         <group>
-                            <field name="move_id" readonly="1"/>
+                            <field name="sale_order_id" readonly="1"/>
                             <field name="partner_id"/>
                             <field name="partner_code"/>
-                            <field name="invoice_date"/>
-                            <field name="move_state"/>
+                            <field name="order_date"/>
+                            <field name="order_state"/>
                         </group>
                         <group>
                             <field name="currency_id"/>
-                            <field name="amount_untaxed"/>
-                            <field name="amount_tax"/>
                             <field name="amount_total"/>
+                            <field name="client_order_ref"/>
+                            <field name="production_folios"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                         </group>
                     </group>
-                    <group string="Ventas y producción">
+                    <group string="Factura Compact (captura manual)">
                         <group>
-                            <field name="sale_order_ids" widget="many2many_tags"/>
-                            <field name="client_order_ref"/>
+                            <field name="compact_invoice_folio"/>
+                            <field name="compact_invoice_date"/>
                         </group>
                         <group>
-                            <field name="production_folios"/>
+                            <field name="compact_invoice_amount"/>
                         </group>
                     </group>
                     <group string="Estado de entrega">
                         <group>
-                            <field name="qty_invoiced"/>
+                            <field name="qty_ordered"/>
                             <field name="qty_delivered"/>
-                            <field name="qty_returned"/>
                             <field name="qty_pending"/>
                         </group>
                         <group>
@@ -121,18 +116,13 @@
                         </group>
                     </group>
                     <field name="line_ids" readonly="1">
-                        <list decoration-danger="needs_review"
-                              decoration-success="qty_pending == 0 and not needs_review">
+                        <list decoration-success="qty_pending == 0">
                             <field name="product_id"/>
                             <field name="production_folio"/>
                             <field name="uom_id"/>
-                            <field name="qty_invoiced"/>
-                            <field name="qty_delivered_raw"/>
-                            <field name="qty_returned"/>
-                            <field name="qty_delivered_net"/>
+                            <field name="qty_ordered"/>
+                            <field name="qty_delivered"/>
                             <field name="qty_pending"/>
-                            <field name="needs_review"/>
-                            <field name="review_reason" optional="hide"/>
                         </list>
                     </field>
                     <group string="Evidencias">
@@ -183,11 +173,11 @@
         <field name="model">delivery.evidence.control</field>
         <field name="arch" type="xml">
             <search string="Entregas y Evidencias">
-                <field name="name" string="Factura"/>
+                <field name="name" string="Orden de venta"/>
                 <field name="partner_id"/>
                 <field name="client_order_ref"/>
-                <field name="sale_order_ids"/>
                 <field name="production_folios" string="Folio de producción"/>
+                <field name="compact_invoice_folio" string="Factura Compact"/>
                 <filter name="pending" string="Pendientes de entrega" domain="[('delivery_state', '=', 'pending')]"/>
                 <filter name="partial" string="Entregas parciales" domain="[('delivery_state', '=', 'partial')]"/>
                 <filter name="delivered_no_evidence" string="Entregados sin evidencia"
@@ -198,21 +188,24 @@
                 <filter name="sent" string="Enviados" domain="[('doc_state', '=', 'sent')]"/>
                 <filter name="review" string="Requieren revisión" domain="[('delivery_state', '=', 'review')]"/>
                 <separator/>
+                <filter name="no_compact" string="Sin factura Compact capturada"
+                        domain="[('compact_invoice_folio', '=', False)]"/>
+                <separator/>
                 <filter name="no_evidence_5" string="+5 días sin evidencia"
-                        domain="[('doc_state', 'in', ['no_evidence', 'partial_evidence']), ('invoice_date', '&lt;=', (context_today() - relativedelta(days=5)).strftime('%Y-%m-%d'))]"/>
+                        domain="[('doc_state', 'in', ['no_evidence', 'partial_evidence']), ('order_date', '&lt;=', (context_today() - relativedelta(days=5)).strftime('%Y-%m-%d'))]"/>
                 <filter name="no_evidence_10" string="+10 días sin evidencia"
-                        domain="[('doc_state', 'in', ['no_evidence', 'partial_evidence']), ('invoice_date', '&lt;=', (context_today() - relativedelta(days=10)).strftime('%Y-%m-%d'))]"/>
+                        domain="[('doc_state', 'in', ['no_evidence', 'partial_evidence']), ('order_date', '&lt;=', (context_today() - relativedelta(days=10)).strftime('%Y-%m-%d'))]"/>
                 <filter name="no_evidence_15" string="+15 días sin evidencia"
-                        domain="[('doc_state', 'in', ['no_evidence', 'partial_evidence']), ('invoice_date', '&lt;=', (context_today() - relativedelta(days=15)).strftime('%Y-%m-%d'))]"/>
+                        domain="[('doc_state', 'in', ['no_evidence', 'partial_evidence']), ('order_date', '&lt;=', (context_today() - relativedelta(days=15)).strftime('%Y-%m-%d'))]"/>
                 <separator/>
                 <filter name="this_month" string="Mes actual"
-                        domain="[('invoice_date', '&gt;=', context_today().strftime('%Y-%m-01'))]"/>
+                        domain="[('order_date', '&gt;=', context_today().strftime('%Y-%m-01'))]"/>
                 <filter name="last_month" string="Mes anterior"
-                        domain="[('invoice_date', '&gt;=', (context_today() - relativedelta(months=1)).strftime('%Y-%m-01')), ('invoice_date', '&lt;', context_today().strftime('%Y-%m-01'))]"/>
+                        domain="[('order_date', '&gt;=', (context_today() - relativedelta(months=1)).strftime('%Y-%m-01')), ('order_date', '&lt;', context_today().strftime('%Y-%m-01'))]"/>
                 <group expand="0" string="Agrupar por">
                     <filter name="group_partner" string="Cliente" context="{'group_by': 'partner_id'}"/>
-                    <filter name="group_date" string="Fecha" context="{'group_by': 'invoice_date:day'}"/>
-                    <filter name="group_month" string="Mes" context="{'group_by': 'invoice_date:month'}"/>
+                    <filter name="group_date" string="Fecha" context="{'group_by': 'order_date:day'}"/>
+                    <filter name="group_month" string="Mes" context="{'group_by': 'order_date:month'}"/>
                     <filter name="group_delivery" string="Estado de entrega" context="{'group_by': 'delivery_state'}"/>
                     <filter name="group_doc" string="Estado documental" context="{'group_by': 'doc_state'}"/>
                     <filter name="group_responsible" string="Responsable" context="{'group_by': 'responsible_id'}"/>
@@ -230,9 +223,9 @@
         <field name="search_view_id" ref="view_delivery_evidence_control_search"/>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">Sin controles todavía</p>
-            <p>Usa Configuración → Sincronizar facturas para generar los controles
-               a partir de las facturas de cliente publicadas. Las facturas nuevas
-               crearán su control automáticamente al publicarse.</p>
+            <p>Usa Configuración → Sincronizar ventas para generar los expedientes
+               a partir de las órdenes de venta confirmadas. Las ventas nuevas
+               crearán su expediente automáticamente al confirmarse.</p>
         </field>
     </record>
 
@@ -273,7 +266,7 @@
         <field name="name">delivery.evidence.sync.wizard.form</field>
         <field name="model">delivery.evidence.sync.wizard</field>
         <field name="arch" type="xml">
-            <form string="Sincronizar facturas">
+            <form string="Sincronizar ventas">
                 <field name="state" invisible="1"/>
                 <group invisible="state == 'done'">
                     <group>
@@ -298,7 +291,7 @@
     </record>
 
     <record id="action_delivery_evidence_sync_wizard" model="ir.actions.act_window">
-        <field name="name">Sincronizar facturas</field>
+        <field name="name">Sincronizar ventas</field>
         <field name="res_model">delivery.evidence.sync.wizard</field>
         <field name="view_mode">form</field>
         <field name="target">new</field>
@@ -386,6 +379,6 @@
     <menuitem id="menu_delivery_evidence_config" name="Configuración"
               parent="menu_delivery_evidence_root" sequence="90"
               groups="restricciones_entregas.group_delivery_evidence_manager"/>
-    <menuitem id="menu_delivery_evidence_sync" name="Sincronizar facturas"
+    <menuitem id="menu_delivery_evidence_sync" name="Sincronizar ventas"
               parent="menu_delivery_evidence_config" action="action_delivery_evidence_sync_wizard" sequence="10"/>
 </odoo>

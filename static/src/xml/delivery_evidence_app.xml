@@ -14,16 +14,16 @@
           <div class="deva-topbar-left">
             <h1>Entregas y Evidencias</h1>
             <div class="deva-flow">
-              <span class="deva-step">1 · Facturas</span>
+              <span class="deva-step">1 · Ventas y remisiones</span>
               <span class="deva-step">2 · Evidencias</span>
-              <span class="deva-step">3 · Listas</span>
+              <span class="deva-step">3 · Factura Compact</span>
               <span class="deva-step">4 · Relación y envío</span>
             </div>
           </div>
           <div class="deva-topbar-actions">
             <button t-if="state.bootstrap.is_manager" type="button" class="deva-btn-ghost-light"
                     t-att-disabled="state.busy" t-on-click="syncRecent">
-              ⟳ Sincronizar facturas
+              ⟳ Sincronizar ventas
             </button>
             <button type="button" class="deva-btn-ghost-light" t-on-click="openExcel">
               ⇪ Cargar Excel
@@ -46,7 +46,7 @@
             </t>
           </div>
           <input type="text" class="deva-search"
-                 placeholder="Buscar factura, cliente, OC, orden de venta o folio de producción…"
+                 placeholder="Buscar orden de venta, cliente, OC, folio de producción o factura Compact…"
                  t-att-value="state.search" t-on-input="onSearch"/>
         </div>
 
@@ -83,10 +83,10 @@
               </button>
             </t>
             <div t-if="!state.rows.length" class="deva-empty">
-              <p><b>No hay facturas en esta pestaña.</b></p>
+              <p><b>No hay expedientes en esta pestaña.</b></p>
               <p t-if="state.bootstrap.is_manager">
-                Usa <b>⟳ Sincronizar facturas</b> para traer las facturas de cliente
-                publicadas de los últimos 60 días. Las nuevas entran solas al publicarse.
+                Usa <b>⟳ Sincronizar ventas</b> para traer las órdenes de venta
+                confirmadas de los últimos 60 días. Las nuevas entran solas al confirmarse.
               </p>
             </div>
           </div>
@@ -110,9 +110,31 @@
             </div>
 
             <div class="deva-detail-links">
-              <button type="button" class="deva-link" t-on-click="openInvoiceForm">Abrir factura</button>
-              <span t-if="state.detail.sales" class="deva-meta">OV: <t t-esc="state.detail.sales"/></span>
+              <button type="button" class="deva-link" t-on-click="openSaleForm">Abrir venta</button>
+              <span t-if="state.detail.folios" class="deva-meta">Folios: <t t-esc="state.detail.folios"/></span>
               <span t-if="state.detail.oc" class="deva-meta">OC cliente: <t t-esc="state.detail.oc"/></span>
+            </div>
+
+            <!-- Factura Compact: control alterno de captura manual -->
+            <div class="deva-section">
+              <div class="deva-section-title">Factura Compact (captura manual)</div>
+              <div class="deva-compact">
+                <label>Folio
+                  <input type="text" class="deva-input" placeholder="Serie y folio en CONTPAQi"
+                         t-att-value="state.detail.compact_folio"
+                         t-on-change="(ev) => this.saveCompact('folio', ev)"/>
+                </label>
+                <label>Fecha
+                  <input type="date" class="deva-input"
+                         t-att-value="state.detail.compact_date"
+                         t-on-change="(ev) => this.saveCompact('date', ev)"/>
+                </label>
+                <label>Importe
+                  <input type="number" step="0.01" class="deva-input"
+                         t-att-value="state.detail.compact_amount || ''"
+                         t-on-change="(ev) => this.saveCompact('amount', ev)"/>
+                </label>
+              </div>
             </div>
 
             <div t-if="state.detail.review_reason" class="deva-alert">
@@ -121,26 +143,26 @@
 
             <!-- Entrega por producto -->
             <div class="deva-section">
-              <div class="deva-section-title">Entrega
+              <div class="deva-section-title">Entrega (remisiones de Odoo)
                 <span class="deva-section-kpi">
-                  <t t-esc="state.detail.qty_delivered"/> de <t t-esc="state.detail.qty_invoiced"/>
+                  <t t-esc="state.detail.qty_delivered"/> de <t t-esc="state.detail.qty_ordered"/>
                   (<t t-esc="state.detail.pct"/>%)
                 </span>
               </div>
               <table class="deva-table">
                 <thead><tr>
-                  <th>Producto</th><th>Folio prod.</th><th class="deva-num">Fact.</th>
-                  <th class="deva-num">Entreg.</th><th class="deva-num">Dev.</th><th class="deva-num">Pend.</th>
+                  <th>Producto</th><th>Folio prod.</th><th>UdM</th>
+                  <th class="deva-num">Pedido</th><th class="deva-num">Entregado</th>
+                  <th class="deva-num">Pendiente</th>
                 </tr></thead>
                 <tbody>
                   <t t-foreach="state.detail.lines" t-as="line" t-key="line.id">
-                    <tr t-att-class="line.review ? 'deva-tr-review' : (line.qty_pending ? '' : 'deva-tr-ok')"
-                        t-att-title="line.review_reason">
+                    <tr t-att-class="line.qty_pending ? '' : 'deva-tr-ok'">
                       <td t-esc="line.product"/>
                       <td t-esc="line.folio"/>
-                      <td class="deva-num" t-esc="line.qty_invoiced"/>
+                      <td t-esc="line.uom"/>
+                      <td class="deva-num" t-esc="line.qty_ordered"/>
                       <td class="deva-num" t-esc="line.qty_delivered"/>
-                      <td class="deva-num" t-esc="line.qty_returned"/>
                       <td class="deva-num" t-esc="line.qty_pending"/>
                     </tr>
                   </t>
@@ -224,8 +246,8 @@
             <h3>Palomear desde Excel</h3>
             <p class="deva-hint">
               Sube el Excel (el que te comparte Administración o el tuyo): el sistema
-              busca en todas las celdas folios de factura, órdenes de venta y folios de
-              producción, y te muestra las facturas encontradas para marcarlas en lote.
+              busca en todas las celdas órdenes de venta, folios de producción, OC de
+              cliente y facturas Compact, y te muestra los expedientes para marcarlos en lote.
             </p>
             <div class="deva-upload">
               <button type="button" class="deva-btn-primary" t-on-click="triggerUpload">
@@ -246,8 +268,8 @@
             <div t-if="!state.excel.matches.length and !state.excel.diagnostics.length and state.excel.fileName and !state.excel.scanning"
                  class="deva-hint">
               Ninguna celda coincidió con folios conocidos. Verifica que el archivo
-              traiga los folios de factura (ej. FA/2026/0001), órdenes de venta
-              (S10978) u OC de cliente, y que las facturas estén sincronizadas.
+              traiga órdenes de venta (S10978), folios de producción (S10978-1),
+              OC de cliente o facturas Compact, y que las ventas estén sincronizadas.
             </div>
 
             <div t-if="state.excel.matches.length" class="deva-excel-list">

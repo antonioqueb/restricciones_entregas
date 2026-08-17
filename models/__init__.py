@@ -1,4 +1,3 @@
 from . import sale_order
 from . import sale_order_line
 from . import delivery_evidence
-from . import account_move

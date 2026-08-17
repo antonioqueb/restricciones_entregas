@@ -4,7 +4,7 @@ from odoo import fields, models, _
 
 class DeliveryEvidenceSyncWizard(models.TransientModel):
     _name = 'delivery.evidence.sync.wizard'
-    _description = 'Sincronizar facturas con el control de entregas'
+    _description = 'Sincronizar ventas con el control de entregas'
 
     date_from = fields.Date('Fecha inicial')
     date_to = fields.Date('Fecha final')
@@ -17,27 +17,27 @@ class DeliveryEvidenceSyncWizard(models.TransientModel):
 
     def action_sync(self):
         self.ensure_one()
-        domain = [('move_type', '=', 'out_invoice'), ('state', '=', 'posted')]
+        domain = [('state', 'in', ['sale', 'done'])]
         if self.company_id:
             domain.append(('company_id', '=', self.company_id.id))
         if self.date_from:
-            domain.append(('invoice_date', '>=', self.date_from))
+            domain.append(('date_order', '>=', self.date_from))
         if self.date_to:
-            domain.append(('invoice_date', '<=', self.date_to))
+            domain.append(('date_order', '<=', self.date_to))
         if self.partner_ids:
             domain.append(('partner_id', 'in', self.partner_ids.ids))
 
-        moves = self.env['account.move'].search(domain)
-        stats = self.env['delivery.evidence.control']._sync_from_moves(moves)
+        orders = self.env['sale.order'].search(domain)
+        stats = self.env['delivery.evidence.control']._sync_from_orders(orders)
         self.write({
             'state': 'done',
             'result': _(
-                'Facturas revisadas: %(total)s\n'
+                'Ventas revisadas: %(total)s\n'
                 'Controles creados: %(created)s\n'
                 'Controles actualizados: %(updated)s\n'
-                'Omitidos: %(skipped)s\n'
+                'Omitidas (no confirmadas): %(skipped)s\n'
                 'Con inconsistencias (requieren revisión): %(review)s'
-            ) % dict(stats, total=len(moves)),
+            ) % dict(stats, total=len(orders)),
         })
         return {
             'type': 'ir.actions.act_window',

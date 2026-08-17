@@ -28,7 +28,7 @@ const DOC_LABELS = {
 /**
  * Entregas y Evidencias — Centro de operación.
  *
- * Flujo en pantalla: (1) las facturas entran solas al publicarse o con
+ * Flujo en pantalla: (1) las ventas confirmadas entran solas o con
  * Sincronizar; (2) se les cargan y validan evidencias; (3) se marcan
  * listas; (4) se genera la relación y se marcan enviadas. El Excel de
  * Administración se puede subir para palomear en lote.
@@ -175,15 +175,26 @@ export class DeliveryEvidenceApp extends Component {
         this.state.detail.notes = ev.target.value;
     }
 
-    async openInvoiceForm() {
-        // Abre la factura del control en la vista contable estándar.
-        const [control] = await this.orm.read(CTRL, [this.state.detail.id], ["move_id"]);
+    async openSaleForm() {
+        // Abre la orden de venta del expediente en la vista estándar.
+        const [control] = await this.orm.read(CTRL, [this.state.detail.id], ["sale_order_id"]);
         this.action.doAction({
             type: "ir.actions.act_window",
-            res_model: "account.move",
-            res_id: control.move_id[0],
+            res_model: "sale.order",
+            res_id: control.sale_order_id[0],
             views: [[false, "form"]],
         });
+    }
+
+    async saveCompact(field, ev) {
+        try {
+            this.state.detail = await this.orm.call(CTRL, "js_set_compact", [
+                [this.state.detail.id], { [field]: ev.target.value },
+            ]);
+            await this.reloadList();
+        } catch (error) {
+            this._notifyError(error);
+        }
     }
 
     generateReport() {
@@ -313,7 +324,7 @@ export class DeliveryEvidenceApp extends Component {
         try {
             const stats = await this.orm.call(CTRL, "js_sync_recent", [60]);
             this.notification.add(
-                `Sincronización (últimos 60 días): ${stats.total} facturas — ` +
+                `Sincronización (últimos 60 días): ${stats.total} ventas — ` +
                 `${stats.created} nuevas, ${stats.updated} actualizadas, ` +
                 `${stats.review} requieren revisión.`,
                 { type: "success" });

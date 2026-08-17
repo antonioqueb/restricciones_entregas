@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """Relación en Excel para Administración.
 
-Usa xlsxwriter, que forma parte de las dependencias estándar de Odoo (es la
-librería con la que el cliente web exporta a .xlsx); no se agrega ninguna
-dependencia externa nueva.
+Usa xlsxwriter, dependencia estándar de Odoo. Las columnas reflejan el
+control alterno: la venta y las remisiones son de Odoo; la factura es la
+capturada de Compact (CONTPAQi).
 """
 import base64
 import io
@@ -45,9 +45,9 @@ class DeliveryEvidenceReportWizard(models.TransientModel):
         if self.company_id:
             domain.append(('company_id', '=', self.company_id.id))
         if self.date_from:
-            domain.append(('invoice_date', '>=', self.date_from))
+            domain.append(('order_date', '>=', self.date_from))
         if self.date_to:
-            domain.append(('invoice_date', '<=', self.date_to))
+            domain.append(('order_date', '<=', self.date_to))
         if self.partner_ids:
             domain.append(('partner_id', 'in', self.partner_ids.ids))
         if self.delivery_state:
@@ -59,7 +59,7 @@ class DeliveryEvidenceReportWizard(models.TransientModel):
         if self.only_not_sent:
             domain.append(('doc_state', '!=', 'sent'))
         return self.env['delivery.evidence.control'].search(
-            domain, order='invoice_date, name')
+            domain, order='order_date, name')
 
     def action_generate(self):
         self.ensure_one()
@@ -79,10 +79,10 @@ class DeliveryEvidenceReportWizard(models.TransientModel):
         book = xlsxwriter.Workbook(buffer, {'in_memory': True})
         sheet = book.add_worksheet('Relación')
 
-        title_fmt = book.add_format({'bold': True, 'font_size': 14, 'font_color': '#16394C'})
+        title_fmt = book.add_format({'bold': True, 'font_size': 14, 'font_color': '#14425C'})
         sub_fmt = book.add_format({'font_color': '#6A7D8A'})
         head_fmt = book.add_format({
-            'bold': True, 'bg_color': '#16394C', 'font_color': '#FFFFFF',
+            'bold': True, 'bg_color': '#14425C', 'font_color': '#FFFFFF',
             'border': 1, 'text_wrap': True, 'valign': 'vcenter'})
         date_fmt = book.add_format({'num_format': 'dd/mm/yyyy', 'border': 1})
         money_fmt = book.add_format({'num_format': '#,##0.00', 'border': 1})
@@ -107,11 +107,11 @@ class DeliveryEvidenceReportWizard(models.TransientModel):
         }, sub_fmt)
 
         headers = [
-            (_('Fecha'), 11), (_('Serie y Folio'), 18), (_('Código cliente'), 13),
-            (_('Razón social'), 32), (_('OC del cliente'), 16), (_('Órdenes de venta'), 18),
-            (_('Folios de producción'), 24), (_('Moneda'), 8),
-            (_('Venta (moneda original)'), 16), (_('Venta (moneda compañía)'), 16),
-            (_('Cant. facturada'), 12), (_('Cant. entregada'), 12), (_('Cant. pendiente'), 12),
+            (_('Fecha pedido'), 11), (_('Orden de venta'), 13), (_('Código cliente'), 13),
+            (_('Razón social'), 32), (_('OC del cliente'), 16),
+            (_('Folios de producción'), 24), (_('Moneda'), 8), (_('Total venta'), 14),
+            (_('Factura Compact'), 15), (_('Fecha factura'), 12), (_('Importe factura'), 14),
+            (_('Cant. pedida'), 12), (_('Cant. entregada'), 12), (_('Cant. pendiente'), 12),
             (_('% entregado'), 10), (_('Estado entrega'), 14), (_('Estado evidencia'), 18),
             (_('Fecha evidencia'), 12), (_('Envío a Administración'), 14), (_('Observaciones'), 30),
         ]
@@ -123,44 +123,45 @@ class DeliveryEvidenceReportWizard(models.TransientModel):
         sheet.freeze_panes(header_row + 1, 0)
 
         row = header_row
-        totals = {'orig': 0.0, 'comp': 0.0, 'inv': 0.0, 'dlv': 0.0, 'pen': 0.0}
+        totals = {'venta': 0.0, 'compact': 0.0, 'ord': 0.0, 'dlv': 0.0, 'pen': 0.0}
         for control in controls:
             row += 1
-            sheet.write(row, 0, control.invoice_date or '', date_fmt)
+            sheet.write(row, 0, control.order_date or '', date_fmt)
             sheet.write(row, 1, control.name or '', cell_fmt)
             sheet.write(row, 2, control.partner_code or '', cell_fmt)
             sheet.write(row, 3, control.partner_id.name or '', cell_fmt)
             sheet.write(row, 4, control.client_order_ref or '', cell_fmt)
-            sheet.write(row, 5, ', '.join(control.sale_order_ids.mapped('name')), cell_fmt)
-            sheet.write(row, 6, control.production_folios or '', cell_fmt)
-            sheet.write(row, 7, control.currency_id.name or '', cell_fmt)
-            sheet.write(row, 8, control.amount_total, money_fmt)
-            sheet.write(row, 9, control.amount_total_signed, money_fmt)
-            sheet.write(row, 10, control.qty_invoiced, qty_fmt)
-            sheet.write(row, 11, control.qty_delivered, qty_fmt)
-            sheet.write(row, 12, control.qty_pending, qty_fmt)
-            sheet.write(row, 13, control.delivered_pct, pct_fmt)
-            sheet.write(row, 14, delivery_labels.get(control.delivery_state, ''), cell_fmt)
-            sheet.write(row, 15, doc_labels.get(control.doc_state, ''), cell_fmt)
-            sheet.write(row, 16, control.evidence_received_date or '', date_fmt)
-            sheet.write(row, 17, control.sent_date and fields.Datetime.context_timestamp(
+            sheet.write(row, 5, control.production_folios or '', cell_fmt)
+            sheet.write(row, 6, control.currency_id.name or '', cell_fmt)
+            sheet.write(row, 7, control.amount_total, money_fmt)
+            sheet.write(row, 8, control.compact_invoice_folio or '', cell_fmt)
+            sheet.write(row, 9, control.compact_invoice_date or '', date_fmt)
+            sheet.write(row, 10, control.compact_invoice_amount or 0.0, money_fmt)
+            sheet.write(row, 11, control.qty_ordered, qty_fmt)
+            sheet.write(row, 12, control.qty_delivered, qty_fmt)
+            sheet.write(row, 13, control.qty_pending, qty_fmt)
+            sheet.write(row, 14, control.delivered_pct, pct_fmt)
+            sheet.write(row, 15, delivery_labels.get(control.delivery_state, ''), cell_fmt)
+            sheet.write(row, 16, doc_labels.get(control.doc_state, ''), cell_fmt)
+            sheet.write(row, 17, control.evidence_received_date or '', date_fmt)
+            sheet.write(row, 18, control.sent_date and fields.Datetime.context_timestamp(
                 self, control.sent_date).strftime('%d/%m/%Y') or '', cell_fmt)
-            sheet.write(row, 18, control.notes or '', cell_fmt)
-            totals['orig'] += control.amount_total
-            totals['comp'] += control.amount_total_signed
-            totals['inv'] += control.qty_invoiced
+            sheet.write(row, 19, control.notes or '', cell_fmt)
+            totals['venta'] += control.amount_total
+            totals['compact'] += control.compact_invoice_amount or 0.0
+            totals['ord'] += control.qty_ordered
             totals['dlv'] += control.qty_delivered
             totals['pen'] += control.qty_pending
 
         row += 1
         sheet.write(row, 3, _('TOTALES (%s registros)') % len(controls), total_lbl_fmt)
-        for col in (0, 1, 2, 4, 5, 6, 7, 13, 14, 15, 16, 17, 18):
+        for col in (0, 1, 2, 4, 5, 6, 8, 9, 14, 15, 16, 17, 18, 19):
             sheet.write(row, col, '', total_lbl_fmt)
-        sheet.write(row, 8, totals['orig'], total_fmt)
-        sheet.write(row, 9, totals['comp'], total_fmt)
-        sheet.write(row, 10, totals['inv'], total_fmt)
-        sheet.write(row, 11, totals['dlv'], total_fmt)
-        sheet.write(row, 12, totals['pen'], total_fmt)
+        sheet.write(row, 7, totals['venta'], total_fmt)
+        sheet.write(row, 10, totals['compact'], total_fmt)
+        sheet.write(row, 11, totals['ord'], total_fmt)
+        sheet.write(row, 12, totals['dlv'], total_fmt)
+        sheet.write(row, 13, totals['pen'], total_fmt)
 
         book.close()
         file_name = 'relacion_entregas_evidencias_%s.xlsx' % fields.Date.context_today(
@@ -181,7 +182,7 @@ class DeliveryEvidenceReportWizard(models.TransientModel):
 
     def action_mark_included_sent(self):
         """Marca como enviados los controles incluidos, solo bajo confirmación
-        explícita del usuario responsable (el botón lleva confirm en la vista)."""
+        explícita del responsable (el botón lleva confirm en la vista)."""
         self.ensure_one()
         ready = self.included_ids.filtered(lambda c: c.doc_state == 'ready')
         if not ready:

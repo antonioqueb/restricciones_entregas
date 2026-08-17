@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Control de Entregas y Evidencias.
+"""Control de Entregas y Evidencias (control alterno a la facturación).
 
-Visor documental por factura de cliente: qué se facturó, qué se entregó
-realmente (movimientos de inventario validados menos devoluciones), qué
-evidencias firmadas/selladas existen, y el seguimiento hasta el envío del
-expediente a Administración.
+En esta instancia Odoo NO factura: registra las ventas y las remisiones;
+la facturación real vive en CONTPAQi (Compact). Por eso el expediente se
+ancla en la ORDEN DE VENTA (el folio de seguimiento de la casa):
 
-No duplica información contable: todo lo fiscal se lee por campos
-relacionados de account.move. Las cantidades se calculan desde los
-movimientos reales de inventario ligados a las líneas de venta
-(account.move.line.sale_line_ids → sale.order.line.move_ids). Los folios
-de producción son los folios por línea de venta (delivery_folio) de este
-mismo módulo: una orden de venta puede tener varios (S00300-1, S00300-2).
+- Cantidades pedidas/entregadas: de las líneas de venta y sus remisiones
+  reales de Odoo (qty_delivered ya neto de devoluciones).
+- Folios de producción: los folios por línea (multi-folio S10978-1, -2…)
+  de este mismo módulo.
+- Factura: datos de Compact capturados a mano en el expediente (folio,
+  fecha, importe), sin ningún vínculo contable con Odoo.
+- Evidencias: remisiones firmadas/selladas, acuses y fotos, con
+  validación y envío a Administración.
 """
 import base64
 import io
@@ -45,62 +46,61 @@ class DeliveryEvidenceControl(models.Model):
     _name = 'delivery.evidence.control'
     _description = 'Control de Entregas y Evidencias'
     _inherit = ['mail.thread', 'mail.activity.mixin']
-    _order = 'invoice_date desc, id desc'
+    _order = 'order_date desc, id desc'
     _rec_name = 'name'
 
     # ------------------------------------------------------------------
-    # Factura (todo relacionado, sin copiar datos contables)
+    # Venta (ancla del expediente; todo relacionado, sin copiar datos)
     # ------------------------------------------------------------------
-    move_id = fields.Many2one(
-        'account.move', 'Factura', required=True, index=True,
-        ondelete='restrict', domain=[('move_type', '=', 'out_invoice')],
+    sale_order_id = fields.Many2one(
+        'sale.order', 'Orden de venta', required=True, index=True,
+        ondelete='restrict',
     )
-    name = fields.Char('Serie y Folio', related='move_id.name', store=True)
-    company_id = fields.Many2one(related='move_id.company_id', store=True, index=True)
-    partner_id = fields.Many2one(related='move_id.partner_id', store=True, string='Cliente')
+    name = fields.Char('Folio', related='sale_order_id.name', store=True)
+    company_id = fields.Many2one(related='sale_order_id.company_id', store=True, index=True)
+    partner_id = fields.Many2one(related='sale_order_id.partner_id', store=True, string='Cliente')
     partner_code = fields.Char(
-        'Código del cliente', related='move_id.partner_id.company_registry', store=True,
+        'Código del cliente', related='sale_order_id.partner_id.company_registry', store=True,
     )
-    invoice_date = fields.Date(related='move_id.invoice_date', store=True, string='Fecha')
-    currency_id = fields.Many2one(related='move_id.currency_id')
-    amount_untaxed = fields.Monetary(related='move_id.amount_untaxed', string='Subtotal')
-    amount_tax = fields.Monetary(related='move_id.amount_tax', string='Impuestos')
-    amount_total = fields.Monetary(related='move_id.amount_total', string='Total')
-    amount_total_signed = fields.Monetary(
-        related='move_id.amount_total_signed', string='Total (moneda compañía)',
-        currency_field='company_currency_id',
-    )
-    company_currency_id = fields.Many2one(related='move_id.company_currency_id')
-    move_state = fields.Selection(related='move_id.state', string='Estado factura', store=True)
-
-    # ------------------------------------------------------------------
-    # Ventas, producción y logística (relaciones reales)
-    # ------------------------------------------------------------------
-    sale_order_ids = fields.Many2many(
-        'sale.order', string='Órdenes de venta', compute='_compute_sale_links', store=True,
-    )
+    order_date = fields.Date('Fecha', compute='_compute_order_date', store=True)
+    currency_id = fields.Many2one(related='sale_order_id.currency_id')
+    amount_total = fields.Monetary(related='sale_order_id.amount_total', string='Total venta')
+    order_state = fields.Selection(related='sale_order_id.state', string='Estado venta', store=True)
     client_order_ref = fields.Char(
-        'OC del cliente', compute='_compute_sale_links', store=True,
+        'OC del cliente', related='sale_order_id.client_order_ref', store=True,
     )
     production_folios = fields.Char(
         'Folios de producción', compute='_compute_sale_links', store=True,
         help='Folios por línea de venta (multi-folio): cada consecutivo '
-             'S00300-1, S00300-2… es un folio de producción independiente.',
+             'S10978-1, S10978-2… es un folio de producción independiente.',
     )
     picking_ids = fields.Many2many(
-        'stock.picking', string='Entregas', compute='_compute_sale_links', store=True,
+        'stock.picking', string='Remisiones', compute='_compute_sale_links', store=True,
     )
     picking_count = fields.Integer(compute='_compute_counts')
-    sale_count = fields.Integer(compute='_compute_counts')
     evidence_count = fields.Integer(compute='_compute_counts')
 
+    # Legado de la primera versión (anclada a facturas de Odoo). Se conserva
+    # opcional para no romper la base ya desplegada; no se usa.
+    move_id = fields.Many2one('account.move', 'Factura Odoo (legado)', readonly=True)
+
     # ------------------------------------------------------------------
-    # Cantidades (calculadas de movimientos reales por _update_from_source)
+    # Factura Compact (control alterno: captura manual, sin vínculo contable)
+    # ------------------------------------------------------------------
+    compact_invoice_folio = fields.Char(
+        'Factura Compact', tracking=True,
+        help='Serie y folio de la factura emitida en CONTPAQi. Captura manual: '
+             'esta instancia de Odoo no factura.',
+    )
+    compact_invoice_date = fields.Date('Fecha factura Compact', tracking=True)
+    compact_invoice_amount = fields.Monetary('Importe factura Compact', tracking=True)
+
+    # ------------------------------------------------------------------
+    # Cantidades (de las remisiones reales; ver _update_from_source)
     # ------------------------------------------------------------------
     line_ids = fields.One2many('delivery.evidence.control.line', 'control_id', 'Detalle')
-    qty_invoiced = fields.Float('Cant. facturada', digits='Product Unit of Measure', readonly=True)
+    qty_ordered = fields.Float('Cant. pedida', digits='Product Unit of Measure', readonly=True)
     qty_delivered = fields.Float('Cant. entregada (neta)', digits='Product Unit of Measure', readonly=True)
-    qty_returned = fields.Float('Cant. devuelta', digits='Product Unit of Measure', readonly=True)
     qty_pending = fields.Float('Cant. pendiente', digits='Product Unit of Measure', readonly=True)
     delivered_pct = fields.Float('% entregado', readonly=True, aggregator='avg')
     delivery_state = fields.Selection(
@@ -126,189 +126,108 @@ class DeliveryEvidenceControl(models.Model):
     notes = fields.Text('Observaciones')
     days_without_evidence = fields.Integer(
         'Días sin evidencia', compute='_compute_days_without_evidence',
-        help='Días desde la fecha de factura sin evidencia validada.',
+        help='Días desde la fecha del pedido sin evidencia validada.',
     )
     active = fields.Boolean(default=True)
 
     _sql_constraints = [
-        ('move_uniq', 'unique(move_id)',
-         'Ya existe un control de entregas y evidencias para esa factura.'),
+        ('sale_order_uniq', 'unique(sale_order_id)',
+         'Ya existe un control de entregas y evidencias para esa orden de venta.'),
     ]
 
     # ==================================================================
-    # Cómputos ligeros
+    # Cómputos
     # ==================================================================
-    @api.depends('move_id.invoice_line_ids.sale_line_ids')
+    @api.depends('sale_order_id.date_order')
+    def _compute_order_date(self):
+        for control in self:
+            control.order_date = (
+                control.sale_order_id.date_order
+                and control.sale_order_id.date_order.date() or False
+            )
+
+    @api.depends('sale_order_id.order_line.delivery_folio', 'sale_order_id.picking_ids')
     def _compute_sale_links(self):
         for control in self:
-            sale_lines = control.move_id.invoice_line_ids.sale_line_ids
-            orders = sale_lines.order_id
-            control.sale_order_ids = [(6, 0, orders.ids)]
-            refs = [r for r in orders.mapped('client_order_ref') if r]
-            if not refs and control.move_id.ref:
-                refs = [control.move_id.ref]
-            control.client_order_ref = ', '.join(dict.fromkeys(refs)) or False
-            folios = [f for f in sale_lines.mapped('delivery_folio') if f]
+            lines = control.sale_order_id.order_line
+            folios = [f for f in lines.mapped('delivery_folio') if f]
             control.production_folios = ', '.join(dict.fromkeys(folios)) or False
-            control.picking_ids = [(6, 0, orders.picking_ids.ids)]
+            control.picking_ids = [(6, 0, control.sale_order_id.picking_ids.ids)]
 
     def _compute_counts(self):
         for control in self:
             control.picking_count = len(control.picking_ids)
-            control.sale_count = len(control.sale_order_ids)
             control.evidence_count = len(control.evidence_ids)
 
-    @api.depends('doc_state', 'invoice_date')
+    @api.depends('doc_state', 'order_date')
     def _compute_days_without_evidence(self):
         today = fields.Date.context_today(self)
         for control in self:
-            if control.doc_state in ('no_evidence', 'partial_evidence') and control.invoice_date:
-                control.days_without_evidence = (today - control.invoice_date).days
+            if control.doc_state in ('no_evidence', 'partial_evidence') and control.order_date:
+                control.days_without_evidence = (today - control.order_date).days
             else:
                 control.days_without_evidence = 0
 
     # ==================================================================
-    # Cálculo de cantidades desde los movimientos reales
+    # Cantidades desde las remisiones reales de Odoo
     # ==================================================================
-    def _sale_line_delivery_qty(self, sale_line, target_uom):
-        """(entregado, devuelto) de una línea de venta, en la UdM destino.
-
-        Solo movimientos validados (state='done'). Entrega = destino en
-        ubicación de cliente; devolución = origen en ubicación de cliente.
-        """
-        delivered = returned = 0.0
-        for move in sale_line.move_ids.filtered(lambda m: m.state == 'done'):
-            qty = move.product_uom._compute_quantity(
-                move.quantity, target_uom, rounding_method='HALF-UP')
-            if move.location_dest_id.usage == 'customer':
-                delivered += qty
-            elif move.location_id.usage == 'customer':
-                returned += qty
-        return delivered, returned
-
     def _update_from_source(self):
-        """Recalcula relaciones, cantidades y estado de entrega del control.
+        """Recalcula el detalle y el estado de entrega desde la venta.
 
-        No modifica facturas, entregas ni inventario: solo lee.
+        qty_delivered de la línea de venta ya es el neto real de las
+        remisiones validadas menos devoluciones (lo mantiene Odoo desde los
+        movimientos de inventario). Solo lectura: no toca ventas ni stock.
         """
         Line = self.env['delivery.evidence.control.line']
         for control in self:
-            move = control.move_id
+            order = control.sale_order_id
             control.line_ids.unlink()
 
-            if move.state == 'cancel':
+            if order.state == 'cancel':
                 control.write({
                     'delivery_state': 'cancelled',
-                    'qty_invoiced': 0.0, 'qty_delivered': 0.0,
-                    'qty_returned': 0.0, 'qty_pending': 0.0,
+                    'qty_ordered': 0.0, 'qty_delivered': 0.0, 'qty_pending': 0.0,
                     'delivered_pct': 0.0, 'review_reason': False,
                 })
                 continue
 
-            # Notas de crédito publicadas ligadas a esta factura: reducen lo
-            # facturado por producto para no inflar los totales.
-            refunds = self.env['account.move'].search([
-                ('move_type', '=', 'out_refund'),
-                ('state', '=', 'posted'),
-                ('reversed_entry_id', '=', move.id),
-            ])
-            refund_pool = {}
-            for rline in refunds.invoice_line_ids:
-                if rline.display_type == 'product' and rline.product_id:
-                    key = rline.product_id.id
-                    refund_pool[key] = refund_pool.get(key, 0.0) + rline.quantity
-
-            reasons = []
-            totals = {'inv': 0.0, 'del': 0.0, 'ret': 0.0, 'pen': 0.0}
-            product_lines = move.invoice_line_ids.filtered(
-                lambda l: l.display_type == 'product' and l.product_id)
-
-            for inv_line in product_lines:
-                uom = inv_line.product_uom_id or inv_line.product_id.uom_id
-                qty_inv = inv_line.quantity
-                # Aplica la nota de crédito disponible para este producto.
-                pool = refund_pool.get(inv_line.product_id.id, 0.0)
-                if pool > 0:
-                    applied = min(pool, qty_inv)
-                    qty_inv -= applied
-                    refund_pool[inv_line.product_id.id] = pool - applied
-
-                sale_lines = inv_line.sale_line_ids
-                delivered = returned = 0.0
-                needs_review = False
-                line_reason = False
-
-                if not sale_lines:
-                    needs_review = True
-                    line_reason = _(
-                        'La línea de factura no está ligada a ninguna línea de '
-                        'venta; la entrega no puede determinarse sin ambigüedad.')
-                else:
-                    for sl in sale_lines:
-                        d, r = control._sale_line_delivery_qty(sl, uom)
-                        delivered += d
-                        returned += r
-                        # Si la misma línea de venta está facturada en más de
-                        # una factura publicada, la atribución de lo entregado
-                        # a ESTA factura es ambigua: no se inventa un reparto.
-                        other_invoices = sl.invoice_lines.move_id.filtered(
-                            lambda m: m.move_type == 'out_invoice'
-                            and m.state == 'posted' and m != move)
-                        if other_invoices:
-                            needs_review = True
-                            line_reason = _(
-                                'La línea de venta %(folio)s también está '
-                                'facturada en %(others)s: lo entregado no puede '
-                                'atribuirse sin ambigüedad a una sola factura.'
-                            ) % {
-                                'folio': sl.delivery_folio or sl.order_id.name,
-                                'others': ', '.join(other_invoices.mapped('name')),
-                            }
-
-                net = delivered - returned
-                pending = max(qty_inv - net, 0.0)
+            totals = {'ord': 0.0, 'dlv': 0.0, 'pen': 0.0}
+            product_lines = order.order_line.filtered(
+                lambda l: not l.display_type and l.product_id)
+            for sale_line in product_lines:
+                ordered = sale_line.product_uom_qty
+                delivered = sale_line.qty_delivered
+                pending = max(ordered - delivered, 0.0)
                 Line.create({
                     'control_id': control.id,
-                    'invoice_line_id': inv_line.id,
-                    'sale_line_id': sale_lines[:1].id,
-                    'product_id': inv_line.product_id.id,
-                    'uom_id': uom.id,
-                    'qty_invoiced': qty_inv,
-                    'qty_delivered_raw': delivered,
-                    'qty_returned': returned,
-                    'qty_delivered_net': net,
+                    'sale_line_id': sale_line.id,
+                    'product_id': sale_line.product_id.id,
+                    'uom_id': sale_line.product_uom.id,
+                    'qty_ordered': ordered,
+                    'qty_delivered': delivered,
                     'qty_pending': pending,
-                    'needs_review': needs_review,
-                    'review_reason': line_reason,
                 })
-                if needs_review and line_reason:
-                    reasons.append(line_reason)
-                totals['inv'] += qty_inv
-                totals['del'] += net
-                totals['ret'] += returned
+                totals['ord'] += ordered
+                totals['dlv'] += delivered
                 totals['pen'] += pending
 
             rounding = 0.001
-            if reasons:
-                state = 'review'
-            elif totals['inv'] <= rounding and not product_lines:
-                state = 'review'
-                reasons.append(_('La factura no tiene líneas de producto.'))
+            if not product_lines:
+                state, reason = 'review', _('La orden no tiene líneas de producto.')
             elif totals['pen'] <= rounding:
-                state = 'delivered'
-            elif totals['del'] > rounding:
-                state = 'partial'
+                state, reason = 'delivered', False
+            elif totals['dlv'] > rounding:
+                state, reason = 'partial', False
             else:
-                state = 'pending'
+                state, reason = 'pending', False
 
             control.write({
-                'qty_invoiced': totals['inv'],
-                'qty_delivered': totals['del'],
-                'qty_returned': totals['ret'],
+                'qty_ordered': totals['ord'],
+                'qty_delivered': totals['dlv'],
                 'qty_pending': totals['pen'],
-                'delivered_pct': (100.0 * totals['del'] / totals['inv']) if totals['inv'] else 0.0,
+                'delivered_pct': (100.0 * totals['dlv'] / totals['ord']) if totals['ord'] else 0.0,
                 'delivery_state': state,
-                'review_reason': '\n'.join(dict.fromkeys(reasons)) or False,
+                'review_reason': reason,
             })
 
     def _update_evidence_stage(self):
@@ -328,30 +247,27 @@ class DeliveryEvidenceControl(models.Model):
                 control.doc_state = 'no_evidence'
 
     # ==================================================================
-    # Sincronización (usada por el wizard y por la publicación de facturas)
+    # Sincronización desde órdenes de venta confirmadas
     # ==================================================================
     @api.model
-    def _sync_from_moves(self, moves):
-        """Crea/actualiza controles para las facturas dadas. Idempotente."""
+    def _sync_from_orders(self, orders):
+        """Crea/actualiza controles para las ventas dadas. Idempotente."""
         stats = {'created': 0, 'updated': 0, 'skipped': 0, 'review': 0}
-        moves = moves.filtered(lambda m: m.move_type == 'out_invoice')
-        if not moves:
-            return stats
         existing = {
-            c.move_id.id: c
+            c.sale_order_id.id: c
             for c in self.with_context(active_test=False).search(
-                [('move_id', 'in', moves.ids)])
+                [('sale_order_id', 'in', orders.ids)])
         }
-        for move in moves:
-            if move.state != 'posted' and move.id not in existing:
+        for order in orders:
+            if order.state not in ('sale', 'done', 'cancel'):
                 stats['skipped'] += 1
                 continue
-            control = existing.get(move.id)
+            control = existing.get(order.id)
             if control:
                 control._update_from_source()
                 stats['updated'] += 1
             else:
-                control = self.create({'move_id': move.id})
+                control = self.create({'sale_order_id': order.id})
                 control._update_from_source()
                 stats['created'] += 1
             if control.delivery_state == 'review':
@@ -389,7 +305,7 @@ class DeliveryEvidenceControl(models.Model):
         if self.qty_pending > 0.001 or self.delivery_state != 'delivered':
             if not self._is_manager():
                 raise UserError(_(
-                    'La factura aún tiene cantidad pendiente de entregar. Solo el '
+                    'La orden aún tiene cantidad pendiente de entregar. Solo el '
                     'responsable puede completar el expediente con una excepción justificada.'))
             if not (self.notes or '').strip():
                 raise UserError(_(
@@ -440,12 +356,12 @@ class DeliveryEvidenceControl(models.Model):
             'context': {'default_control_ids': [(6, 0, self.ids)]},
         }
 
-    def action_open_invoice(self):
+    def action_open_sale(self):
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
-            'res_model': 'account.move',
-            'res_id': self.move_id.id,
+            'res_model': 'sale.order',
+            'res_id': self.sale_order_id.id,
             'view_mode': 'form',
         }
 
@@ -453,20 +369,10 @@ class DeliveryEvidenceControl(models.Model):
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
-            'name': _('Entregas'),
+            'name': _('Remisiones'),
             'res_model': 'stock.picking',
             'view_mode': 'list,form',
             'domain': [('id', 'in', self.picking_ids.ids)],
-        }
-
-    def action_open_sales(self):
-        self.ensure_one()
-        return {
-            'type': 'ir.actions.act_window',
-            'name': _('Órdenes de venta'),
-            'res_model': 'sale.order',
-            'view_mode': 'list,form',
-            'domain': [('id', 'in', self.sale_order_ids.ids)],
         }
 
     def unlink(self):
@@ -514,8 +420,8 @@ class DeliveryEvidenceControl(models.Model):
                        ('partner_id', 'ilike', term),
                        ('client_order_ref', 'ilike', term),
                        ('production_folios', 'ilike', term),
-                       ('sale_order_ids.name', 'ilike', term)]
-        controls = self.search(domain, limit=limit, order='invoice_date desc, id desc')
+                       ('compact_invoice_folio', 'ilike', term)]
+        controls = self.search(domain, limit=limit, order='order_date desc, id desc')
         return [c._js_row() for c in controls]
 
     def _js_row(self):
@@ -525,10 +431,10 @@ class DeliveryEvidenceControl(models.Model):
             'name': self.name or '',
             'partner': self.partner_id.name or '',
             'partner_code': self.partner_code or '',
-            'date': self.invoice_date and self.invoice_date.strftime('%d/%m/%Y') or '',
+            'date': self.order_date and self.order_date.strftime('%d/%m/%Y') or '',
             'amount_total': self.amount_total,
             'currency': self.currency_id.name or 'MXN',
-            'qty_invoiced': self.qty_invoiced,
+            'qty_ordered': self.qty_ordered,
             'qty_delivered': self.qty_delivered,
             'qty_pending': self.qty_pending,
             'pct': round(self.delivered_pct, 1),
@@ -537,7 +443,7 @@ class DeliveryEvidenceControl(models.Model):
             'days': self.days_without_evidence,
             'folios': self.production_folios or '',
             'oc': self.client_order_ref or '',
-            'sales': ', '.join(self.sale_order_ids.mapped('name')),
+            'compact_folio': self.compact_invoice_folio or '',
             'evidence_count': len(self.evidence_ids),
             'sent_date': self.sent_date and fields.Datetime.context_timestamp(
                 self, self.sent_date).strftime('%d/%m/%Y') or '',
@@ -548,12 +454,13 @@ class DeliveryEvidenceControl(models.Model):
         self.ensure_one()
         data = self._js_row()
         data.update({
-            'amount_untaxed': self.amount_untaxed,
-            'amount_tax': self.amount_tax,
-            'move_state': self.move_state,
+            'order_state': self.order_state,
             'review_reason': self.review_reason or '',
             'notes': self.notes or '',
             'responsible': self.responsible_id.name or '',
+            'compact_date': self.compact_invoice_date and
+                self.compact_invoice_date.strftime('%Y-%m-%d') or '',
+            'compact_amount': self.compact_invoice_amount,
             'evidence_received_date': self.evidence_received_date and
                 self.evidence_received_date.strftime('%d/%m/%Y') or '',
             'lines': [{
@@ -561,12 +468,9 @@ class DeliveryEvidenceControl(models.Model):
                 'product': l.product_id.display_name or '',
                 'folio': l.production_folio or '',
                 'uom': l.uom_id.name or '',
-                'qty_invoiced': l.qty_invoiced,
-                'qty_delivered': l.qty_delivered_net,
-                'qty_returned': l.qty_returned,
+                'qty_ordered': l.qty_ordered,
+                'qty_delivered': l.qty_delivered,
                 'qty_pending': l.qty_pending,
-                'review': l.needs_review,
-                'review_reason': l.review_reason or '',
             } for l in self.line_ids],
             'evidences': [{
                 'id': e.id,
@@ -620,6 +524,22 @@ class DeliveryEvidenceControl(models.Model):
         self.notes = notes or False
         return True
 
+    def js_set_compact(self, vals):
+        """Captura manual de la factura Compact (folio, fecha, importe)."""
+        self.ensure_one()
+        allowed = {}
+        if 'folio' in vals:
+            allowed['compact_invoice_folio'] = (vals['folio'] or '').strip() or False
+        if 'date' in vals:
+            allowed['compact_invoice_date'] = vals['date'] or False
+        if 'amount' in vals:
+            try:
+                allowed['compact_invoice_amount'] = float(vals['amount'] or 0) or False
+            except (TypeError, ValueError):
+                raise UserError(_('El importe de la factura Compact no es un número válido.'))
+        self.write(allowed)
+        return self.js_detail()
+
     def js_validate_document(self, document_id):
         self.ensure_one()
         doc = self.evidence_ids.filtered(lambda d: d.id == document_id)
@@ -642,22 +562,21 @@ class DeliveryEvidenceControl(models.Model):
     @api.model
     def js_sync_recent(self, days=60):
         if not self.env.user.has_group('restricciones_entregas.group_delivery_evidence_manager'):
-            raise UserError(_('Solo el responsable puede sincronizar facturas.'))
-        date_from = fields.Date.context_today(self) - timedelta(days=days)
-        moves = self.env['account.move'].search([
-            ('move_type', '=', 'out_invoice'),
-            ('state', '=', 'posted'),
-            ('invoice_date', '>=', date_from),
+            raise UserError(_('Solo el responsable puede sincronizar ventas.'))
+        date_from = fields.Datetime.now() - timedelta(days=days)
+        orders = self.env['sale.order'].search([
+            ('state', 'in', ['sale', 'done']),
+            ('date_order', '>=', date_from),
         ])
-        stats = self._sync_from_moves(moves)
-        stats['total'] = len(moves)
+        stats = self._sync_from_orders(orders)
+        stats['total'] = len(orders)
         return stats
 
     @api.model
     def js_match_excel(self, file_b64, filename):
-        """Empata un Excel contra los controles por folio de factura, orden de
-        venta o folio de producción: sirve para palomear en lote lo que venga
-        listado en cualquier layout de Excel."""
+        """Empata un Excel contra los controles por folio de venta, folio de
+        producción, OC del cliente o factura Compact: sirve para palomear en
+        lote lo que venga listado en cualquier layout de Excel."""
         content = base64.b64decode(file_b64)
         fname = (filename or '').lower()
         tokens = set()
@@ -686,10 +605,9 @@ class DeliveryEvidenceControl(models.Model):
 
         index = {}
         for control in self.search([]):
-            identifiers = [control.name or '']
+            identifiers = [control.name or '', control.client_order_ref or '',
+                           control.compact_invoice_folio or '']
             identifiers += (control.production_folios or '').split(', ')
-            identifiers += control.sale_order_ids.mapped('name')
-            identifiers += (control.client_order_ref or '').split(', ')
             for identifier in identifiers:
                 if identifier:
                     index.setdefault(identifier.strip().lower(), control)
@@ -703,63 +621,46 @@ class DeliveryEvidenceControl(models.Model):
             else:
                 unmatched.append(token)
 
-        # Diagnóstico de tokens con forma de folio que no empataron: si la
-        # orden de venta o la factura existen, el control se crea al vuelo;
-        # si no hay factura publicada, se explica por qué no puede palomearse.
+        # Diagnóstico de tokens con forma de folio: si la orden de venta
+        # confirmada existe sin control, se crea al vuelo; si no está
+        # confirmada, se explica por qué no puede palomearse.
         folio_pattern = re.compile(r'^[a-z]{0,6}[\-/]?\d{3,}([\-/]\d+)?$')
         diagnostics = []
         SaleOrder = self.env['sale.order']
-        Move = self.env['account.move']
         for token in unmatched[:300]:
             if not folio_pattern.match(token):
                 continue
             order = SaleOrder.search([('name', '=ilike', token)], limit=1)
-            if order:
-                invoices = order.invoice_ids.filtered(
-                    lambda m: m.move_type == 'out_invoice' and m.state == 'posted')
-                if invoices:
-                    self._sync_from_moves(invoices)
-                    new_controls = self.search([('move_id', 'in', invoices.ids)])
-                    matched |= new_controls
-                    diagnostics.append({
-                        'token': order.name, 'status': 'created',
-                        'detail': _('Orden de venta con factura publicada: se creó su '
-                                    'control y ya aparece en la lista.'),
-                    })
-                else:
-                    diagnostics.append({
-                        'token': order.name, 'status': 'no_invoice',
-                        'detail': _('La orden de venta existe pero aún no tiene factura '
-                                    'de cliente publicada; no hay expediente que palomear.'),
-                    })
+            if not order:
+                diagnostics.append({
+                    'token': token.upper(), 'status': 'unknown',
+                    'detail': _('No corresponde a ninguna orden de venta, folio de '
+                                'producción, OC de cliente ni factura Compact.'),
+                })
                 continue
-            move = Move.search([
-                ('name', '=ilike', token), ('move_type', '=', 'out_invoice'),
-            ], limit=1)
-            if move:
-                if move.state == 'posted':
-                    self._sync_from_moves(move)
-                    matched |= self.search([('move_id', '=', move.id)])
-                    diagnostics.append({
-                        'token': move.name, 'status': 'created',
-                        'detail': _('Factura sin control previo: se creó y ya aparece '
-                                    'en la lista.'),
-                    })
-                else:
-                    diagnostics.append({
-                        'token': move.name, 'status': 'no_invoice',
-                        'detail': _('La factura existe pero no está publicada.'),
-                    })
+            if order.state in ('sale', 'done'):
+                self._sync_from_orders(order)
+                matched |= self.search([('sale_order_id', '=', order.id)])
+                diagnostics.append({
+                    'token': order.name, 'status': 'created',
+                    'detail': _('Orden confirmada sin control previo: se creó y ya '
+                                'aparece en la lista.'),
+                })
+            elif order.state == 'cancel':
+                diagnostics.append({
+                    'token': order.name, 'status': 'no_invoice',
+                    'detail': _('La orden de venta está cancelada.'),
+                })
             else:
                 diagnostics.append({
-                    'token': token, 'status': 'unknown',
-                    'detail': _('No corresponde a ninguna factura, orden de venta, '
-                                'OC de cliente ni folio de producción.'),
+                    'token': order.name, 'status': 'no_invoice',
+                    'detail': _('La orden de venta existe pero aún no está confirmada; '
+                                'no hay expediente que palomear.'),
                 })
 
         return {
             'matched': [c._js_row() for c in matched.sorted(
-                key=lambda c: (c.invoice_date or fields.Date.today(), c.id))],
+                key=lambda c: (c.order_date or fields.Date.today(), c.id))],
             'diagnostics': diagnostics[:40],
             'cells_scanned': len(tokens),
         }
@@ -773,19 +674,14 @@ class DeliveryEvidenceControlLine(models.Model):
     control_id = fields.Many2one(
         'delivery.evidence.control', required=True, index=True, ondelete='cascade')
     company_id = fields.Many2one(related='control_id.company_id', store=True)
-    invoice_line_id = fields.Many2one('account.move.line', 'Línea de factura', readonly=True)
     sale_line_id = fields.Many2one('sale.order.line', 'Línea de venta', readonly=True)
     production_folio = fields.Char(
         'Folio de producción', related='sale_line_id.delivery_folio', store=True)
     product_id = fields.Many2one('product.product', 'Producto', readonly=True)
     uom_id = fields.Many2one('uom.uom', 'UdM', readonly=True)
-    qty_invoiced = fields.Float('Facturado', digits='Product Unit of Measure', readonly=True)
-    qty_delivered_raw = fields.Float('Entregado', digits='Product Unit of Measure', readonly=True)
-    qty_returned = fields.Float('Devuelto', digits='Product Unit of Measure', readonly=True)
-    qty_delivered_net = fields.Float('Entregado neto', digits='Product Unit of Measure', readonly=True)
+    qty_ordered = fields.Float('Pedido', digits='Product Unit of Measure', readonly=True)
+    qty_delivered = fields.Float('Entregado neto', digits='Product Unit of Measure', readonly=True)
     qty_pending = fields.Float('Pendiente', digits='Product Unit of Measure', readonly=True)
-    needs_review = fields.Boolean('Requiere revisión', readonly=True)
-    review_reason = fields.Text('Motivo', readonly=True)
 
 
 class DeliveryEvidenceDocument(models.Model):
@@ -852,4 +748,23 @@ class DeliveryEvidenceDocument(models.Model):
             doc.control_id.message_post(body=_('Evidencia eliminada: %s') % doc.name)
         res = super().unlink()
         controls._update_evidence_stage()
+        return res
+
+
+class SaleOrderEvidenceHook(models.Model):
+    _inherit = 'sale.order'
+
+    def action_confirm(self):
+        """Al confirmar una venta nace su expediente de entregas y evidencias.
+
+        No invasivo: corre después del super() y cualquier falla se registra
+        en el log sin afectar la confirmación.
+        """
+        res = super().action_confirm()
+        try:
+            self.env['delivery.evidence.control'].sudo()._sync_from_orders(self)
+        except Exception:
+            _logger.exception(
+                'Control de Entregas y Evidencias: no se pudo crear el control '
+                'automático al confirmar; la venta se confirmó normalmente.')
         return res

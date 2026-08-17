@@ -343,3 +343,38 @@ $deva-line: #dde6ec;
         .deva-detail { width: 100%; border-left: none; border-top: 2px solid $deva-line; }
     }
 }
+
+// ---------------- Bloque Factura Compact (captura manual) ----------------
+.deva-app .deva-compact {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+
+    label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #6a7d8a;
+        margin: 0;
+    }
+
+    .deva-input {
+        border: 1.5px solid #dde6ec;
+        border-radius: 9px;
+        padding: 8px 11px;
+        min-width: 170px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #14425c;
+
+        &:focus {
+            outline: none;
+            border-color: #1f6e96;
+            box-shadow: 0 0 0 3px rgba(31, 110, 150, 0.12);
+        }
+    }
+}

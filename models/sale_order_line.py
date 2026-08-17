@@ -48,6 +48,14 @@ class SaleOrderLine(models.Model):
         readonly=True,
     )
 
+    order_date = fields.Datetime(
+        string='Fecha de Orden',
+        related='order_id.date_order',
+        store=True,
+        readonly=True,
+        help='Fecha de creación de la orden de venta.',
+    )
+
     report_commitment_date = fields.Datetime(
         string='Fecha Entrega Reporte',
         compute='_compute_delivery_report_fields',
